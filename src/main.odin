@@ -22,7 +22,11 @@ global_settings: Settings = {
 	title = "Houses&Houses"
 }
 
-pass_action: sg.Pass_Action;
+state: struct {
+	pip: sg.Pipeline,
+	bind: sg.Bindings,
+	pass_action: sg.Pass_Action,
+}
 
 hex_to_rgba :: proc (hex_cl: int) -> sg.Color {
 	hex := hex_cl
@@ -44,6 +48,29 @@ hex_to_rgba :: proc (hex_cl: int) -> sg.Color {
 	return sg.Color{colors[0], colors[1], colors[2], colors[3]}
 }
 
+Vertex :: struct {
+	pos: Vector2,
+	color: Vector4,
+	uv: Vector2,
+	tex_index: u8,
+}
+
+Quad :: [4]Vertex
+
+MAX_QUADS :: 8192
+MAX_VERTS :: MAX_QUADS * 4
+
+Draw_Frame :: struct {
+	quads: [MAX_QUADS]Quad,
+	quad_count: int,
+
+	projection: Matrix4,
+	camera_xform: Matrix4,
+
+}
+
+draw_frame : Draw_Frame;
+
 DEFAULT_UV :: v4{0, 0, 1, 1}
 Vector2i :: [2]int
 Vector2 :: [2]f32
@@ -59,12 +86,12 @@ COLOR_RED :: Vector4 {1,0,0,1}
 
 init :: proc "c" () {
 	context = runtime.default_context()
+	
 	sg.setup({
 		environment = sglue.environment(),
 		logger = { func = slog.func },
 	})
-	pass_action.colors[0] = { load_action = .CLEAR, clear_value = hex_to_rgba(0x443355FF) }
-
+	
 	switch sg.query_backend() {
 		case .D3D11: fmt.println(">> using D3D11 backend")
         case .GLCORE, .GLES3: fmt.println(">> using GL backend")
@@ -73,12 +100,57 @@ init :: proc "c" () {
         case .DUMMY: fmt.println(">> using dummy backend")
 	}
 
+	shd: sg.Shader = sg.make_shader(simple_shader_desc(sg.query_backend()));
+
+ /* a vertex buffer with 4 vertices */
+	vertices := [?]f32  {
+		// positions
+		0.5,  0.5, 0.0,      
+		0.5, -0.5, 0.0,      
+		-0.5, -0.5, 0.0,     
+		-0.5,  0.5, 0.0      
+	};
+
+	state.bind.vertex_buffers[0] = sg.make_buffer({
+		data = { ptr = &vertices, size = size_of(vertices) }	
+	})
+
+	indices:= [?]u16 {
+		0, 1, 3,
+		1, 2, 3
+	}
+
+	state.bind.index_buffer = sg.make_buffer({
+		data = { ptr = &indices, size = size_of(indices) }
+	})
+
+	state.pip = sg.make_pipeline({
+		shader = shd,
+		index_type = .UINT16,
+		layout = {
+			attrs = {
+				ATTR_simple_position = { format = .FLOAT3 },
+			},
+		},
+	})
+
+
+	state.pass_action = {
+		colors = {
+			0 = { load_action = .CLEAR, clear_value = hex_to_rgba(0x443355FF) }
+		}
+	}
+
+
 
 }
 
 frame :: proc "c" () {
 	context = runtime.default_context()
-	sg.begin_pass({ action = pass_action, swapchain = sglue.swapchain() })
+	sg.begin_pass({ action = state.pass_action, swapchain = sglue.swapchain() })
+	sg.apply_pipeline(state.pip)
+	sg.apply_bindings(state.bind)
+	sg.draw(0, 6, 1);
 	sg.end_pass()
 	sg.commit()
 }
