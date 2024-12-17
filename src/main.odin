@@ -191,13 +191,13 @@ init :: proc "c" () {
     }
 	brick := images[Image_Id.brick]
 	state.bind.images[IMG__ourTexture] = sg.make_image({
-		width = 4,
-		height = 4,
+		width = brick.width,
+		height = brick.height,
 		pixel_format = sg.Pixel_Format.RGBA8,
 		data = {
 			subimage = {
 				0 = {
-					0 = { ptr = &pixels, size = auto_cast (4 * 4 * 4) },
+					0 = { ptr = brick.data, size = auto_cast (brick.width * brick.height * 4) },
 				},
 			},
 		},
