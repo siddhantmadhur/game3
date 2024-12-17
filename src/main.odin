@@ -3,12 +3,16 @@ package main
 import "base:runtime"
 import "core:fmt"
 
+
 import "core:math/linalg"
+import "core:os"
 
 import slog "../sokol-odin/sokol/log"
 import sg "../sokol-odin/sokol/gfx"
 import sapp "../sokol-odin/sokol/app"
 import sglue "../sokol-odin/sokol/glue"
+
+import stbi "vendor:stb/image"
 
 Settings :: struct {
 	window_w: i32,
@@ -84,9 +88,62 @@ Matrix4 :: linalg.Matrix4f32;
 COLOR_WHITE :: Vector4 {1,1,1,1}
 COLOR_RED :: Vector4 {1,0,0,1}
 
+// :Image stuff
+
+Image_Id :: enum {
+	nil,
+	brick,	
+}
+
+Image :: struct {
+	width, height: i32,
+	tex_index: u8,
+	sg_img: sg.Image,
+	data: [^]byte,
+	atlas_uvs: Vector4,
+}
+
+images: [128]Image
+image_count: int
+
+init_images :: proc () {
+	using fmt
+
+	img_dir := "assets/images/"
+
+	highest_id := 0
+	for img_name, id in Image_Id {
+		if id == 0 { continue }
+		if id > highest_id {
+			highest_id = id
+		}
+
+		path := tprint(img_dir, img_name, ".png", sep="")
+		png_data, succ := os.read_entire_file(path)
+		assert(succ)
+
+		stbi.set_flip_vertically_on_load(1)
+		width, height, channels: i32
+		img_data := stbi.load_from_memory(raw_data(png_data), auto_cast len(png_data), &width, &height, &channels, 4)
+		assert(img_data != nil, "stbi load failed, invalid image?")
+
+		img : Image;
+		img.width = width
+		img.height = height
+		img.data = img_data
+		
+		images[id] = img
+	}
+
+	image_count = highest_id + 1
+}
+
 init :: proc "c" () {
 	context = runtime.default_context()
+
+	init_images()
 	
+
 	sg.setup({
 		environment = sglue.environment(),
 		logger = { func = slog.func },
@@ -100,15 +157,17 @@ init :: proc "c" () {
         case .DUMMY: fmt.println(">> using dummy backend")
 	}
 
+
+
 	shd: sg.Shader = sg.make_shader(simple_shader_desc(sg.query_backend()));
 
  /* a vertex buffer with 4 vertices */
 	vertices := [?]f32  {
-		// positions
-		0.5,  0.5, 0.0,      
-		0.5, -0.5, 0.0,      
-		-0.5, -0.5, 0.0,     
-		-0.5,  0.5, 0.0      
+		// positions 		// Texture Coords
+		 0.5,  0.5, 0.0,	1.0, 1.0,    
+		 0.5, -0.5, 0.0,   	1.0, 0.0, 
+		-0.5, -0.5, 0.0,   	0.0, 0.0,
+		-0.5,  0.5, 0.0,    0.0, 1.0, 
 	};
 
 	state.bind.vertex_buffers[0] = sg.make_buffer({
@@ -124,14 +183,44 @@ init :: proc "c" () {
 		data = { ptr = &indices, size = size_of(indices) }
 	})
 
+	 pixels := [4*4]u32 {
+        0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
+        0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
+        0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
+        0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
+    }
+	brick := images[Image_Id.brick]
+	state.bind.images[IMG__ourTexture] = sg.make_image({
+		width = 4,
+		height = 4,
+		pixel_format = sg.Pixel_Format.RGBA8,
+		data = {
+			subimage = {
+				0 = {
+					0 = { ptr = &pixels, size = auto_cast (4 * 4 * 4) },
+				},
+			},
+		},
+	})
+
+	stbi.image_free(brick.data)
+
+	state.bind.samplers[SMP_ourTexture_smp] = sg.make_sampler({})
+
 	state.pip = sg.make_pipeline({
 		shader = shd,
 		index_type = .UINT16,
 		layout = {
 			attrs = {
 				ATTR_simple_position = { format = .FLOAT3 },
+				ATTR_simple_aTexCoord = { format = .FLOAT2 },
 			},
 		},
+		cull_mode = .BACK,
+		depth = {
+			compare = .LESS_EQUAL,
+			write_enabled = true,
+		}
 	})
 
 
@@ -140,7 +229,6 @@ init :: proc "c" () {
 			0 = { load_action = .CLEAR, clear_value = hex_to_rgba(0x443355FF) }
 		}
 	}
-
 
 
 }
