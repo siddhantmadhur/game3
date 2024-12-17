@@ -2,10 +2,25 @@ package main
 
 import "base:runtime"
 import "core:fmt"
+
+import "core:math/linalg"
+
 import slog "../sokol-odin/sokol/log"
 import sg "../sokol-odin/sokol/gfx"
 import sapp "../sokol-odin/sokol/app"
 import sglue "../sokol-odin/sokol/glue"
+
+Settings :: struct {
+	window_w: i32,
+	window_h: i32,
+	title: cstring,
+}
+
+global_settings: Settings = {
+	window_w = 1280,
+	window_h = 720,
+	title = "Houses&Houses"
+}
 
 pass_action: sg.Pass_Action;
 
@@ -29,6 +44,19 @@ hex_to_rgba :: proc (hex_cl: int) -> sg.Color {
 	return sg.Color{colors[0], colors[1], colors[2], colors[3]}
 }
 
+DEFAULT_UV :: v4{0, 0, 1, 1}
+Vector2i :: [2]int
+Vector2 :: [2]f32
+Vector3 :: [3]f32
+Vector4 :: [4]f32
+v2 :: Vector2
+v3 :: Vector3
+v4 :: Vector4
+Matrix4 :: linalg.Matrix4f32;
+
+COLOR_WHITE :: Vector4 {1,1,1,1}
+COLOR_RED :: Vector4 {1,0,0,1}
+
 init :: proc "c" () {
 	context = runtime.default_context()
 	sg.setup({
@@ -44,6 +72,8 @@ init :: proc "c" () {
         case .WGPU: fmt.println(">> using WebGPU backend")
         case .DUMMY: fmt.println(">> using dummy backend")
 	}
+
+
 }
 
 frame :: proc "c" () {
@@ -63,9 +93,9 @@ main :: proc() {
 		init_cb = init,
 		frame_cb = frame,
 		cleanup_cb = cleanup,
-		width = 400,
-		height = 300,
-		window_title = "Houses&Houses",
+		width = global_settings.window_w,
+		height = global_settings.window_h,
+		window_title = global_settings.title,
 		icon = { sokol_default = true },
 		logger = { func = slog.func },
 	})
