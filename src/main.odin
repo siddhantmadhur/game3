@@ -57,6 +57,7 @@ hex_to_rgba :: proc (hex_cl: int) -> sg.Color {
 Vertex :: struct {
 	pos: Vector2,
 	color: Vector4,
+	texCoord: Vector2,
 }
 
 Quad :: [4]Vertex
@@ -117,6 +118,11 @@ draw_quad_projected :: proc(
 	verts[3].texCoord = tex_indices[3]	
 	**/	
 
+	verts[0].texCoord = v2{0.0, 0.0};
+	verts[1].texCoord = v2{0.0, 1.0};
+	verts[2].texCoord = v2{1.0, 1.0};
+	verts[3].texCoord = v2{1.0, 0.0};
+
 	verts[0].color = colors[0]
 	verts[1].color = colors[1]
 	verts[2].color = colors[2]
@@ -160,6 +166,7 @@ draw_rect_xform :: proc (
 Image_Id :: enum {
 	nil,
 	brick,	
+	housemd
 }
 
 Image :: struct {
@@ -257,8 +264,7 @@ init :: proc "c" () {
 		data = { ptr = &indices, size = size_of(indices) }
 	})
 
-	/**
-	brick := images[Image_Id.spritemap]
+	brick := images[Image_Id.housemd]
 
 	state.bind.images[IMG__ourTexture] = sg.make_image({
 		width = brick.width,
@@ -275,9 +281,8 @@ init :: proc "c" () {
 
 	stbi.image_free(brick.data)
 
-	**/	
 
-	//state.bind.samplers[SMP_ourTexture_smp] = sg.make_sampler({})
+	state.bind.samplers[SMP_ourTexture_smp] = sg.make_sampler({})
 
 	state.pip = sg.make_pipeline({
 		shader = shd,
@@ -287,6 +292,7 @@ init :: proc "c" () {
 				ATTR_simple_position = { format = .FLOAT2 },
 	//			ATTR_simple_aTexCoord = { format = .FLOAT2 },
 				ATTR_simple_color0 = { format = .FLOAT4 },
+				ATTR_simple_aTexCoord = { format = .FLOAT2 },
 			},
 		},
 		cull_mode = .BACK,
@@ -310,8 +316,8 @@ delta_t : f64 = 0
 elapsed_t: f64 = 0
 last_time : time.Time = time.now()
 
-
-position := Vector2{-100, -100}
+radius:f32 = 150
+position := Vector2{-radius, -radius}
 
 draw_game :: proc "c" () {
 	context = runtime.default_context()
@@ -321,11 +327,13 @@ draw_game :: proc "c" () {
 	draw_frame.camera_xform = Matrix4(1)
 	//draw_frame.camera_xform *= 0.1
 
-	position.x = (auto_cast math.sin(elapsed_t)) * 100
-	position.y = auto_cast math.cos(elapsed_t) * 100
+	position.x = (auto_cast math.sin(elapsed_t)) * radius
+	position.y = auto_cast math.cos(elapsed_t) * radius
 
-	xform := linalg.matrix4_translate(v3{position.x-60, position.y+60, 0})
-	draw_rect_xform(xform, v2{120, 120}, COLOR_RED, .nil)
+	image_height:f32 = 200
+
+	xform := linalg.matrix4_translate(v3{position.x-(image_height / 2.0), position.y+(image_height / 2.0), 0})
+	draw_rect_xform(xform, v2{image_height, image_height}, COLOR_WHITE, .nil)
 
 }
 
