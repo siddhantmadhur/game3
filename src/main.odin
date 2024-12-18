@@ -53,10 +53,8 @@ hex_to_rgba :: proc (hex_cl: int) -> sg.Color {
 }
 
 Vertex :: struct {
-	pos: Vector2,
-	color: Vector4,
-	uv: Vector2,
-	tex_index: u8,
+	pos: Vector3,
+	texCoord: Vector2,
 }
 
 Quad :: [4]Vertex
@@ -87,6 +85,24 @@ Matrix4 :: linalg.Matrix4f32;
 
 COLOR_WHITE :: Vector4 {1,1,1,1}
 COLOR_RED :: Vector4 {1,0,0,1}
+
+draw_rect_xform :: proc (
+	pos: Vector2,
+	size: Vector2,
+	color: Vector4,
+) {
+
+	quad := &draw_frame.quads[draw_frame.quad_count]
+
+	quad[0] = Vertex { pos = Vector3 {pos[0], pos[1] , 0}, texCoord = {1.0, 1.0}}
+	quad[1] = Vertex { pos = Vector3 {pos[0], pos[1] - size.y, 0}, texCoord = {1.0, 0.0} }
+	quad[2] = Vertex { pos = Vector3 {pos[0] - size.x, pos[1] - size.y, 0}, texCoord = {0.0, 0.0}}
+	quad[3] = Vertex { pos = Vector3 {pos[0] - size.x, pos[1], 0}, texCoord = {0.0, 1.0}}
+
+
+	draw_frame.quad_count += 1
+}
+
 
 // :Image stuff
 
@@ -162,6 +178,9 @@ init :: proc "c" () {
 	shd: sg.Shader = sg.make_shader(simple_shader_desc(sg.query_backend()));
 
  /* a vertex buffer with 4 vertices */
+
+
+
 	vertices := [?]f32  {
 		// positions 		// Texture Coords
 		 0.5,  0.5, 0.0,	1.0, 1.0,    
@@ -170,26 +189,35 @@ init :: proc "c" () {
 		-0.5,  0.5, 0.0,    0.0, 1.0, 
 	};
 
+	draw_rect_xform(v2{-0.2, 0.5}, v2{0.4, 1.0}, COLOR_WHITE)
+	draw_rect_xform(v2{0.8, 0.5}, v2{0.4, 1.0}, COLOR_WHITE)
+
 	state.bind.vertex_buffers[0] = sg.make_buffer({
-		data = { ptr = &vertices, size = size_of(vertices) }	
+		data = { ptr = &draw_frame.quads, size = size_of(draw_frame.quads) }	
 	})
 
-	indices:= [?]u16 {
-		0, 1, 3,
-		1, 2, 3
+
+	index_buffer_count :: MAX_QUADS*6
+	indices : [index_buffer_count]u16;
+	i := 0;
+	for i < index_buffer_count {
+		// vertex offset pattern to draw a quad
+		// { 0, 1, 2,  0, 2, 3 }
+		indices[i + 0] = auto_cast ((i/6)*4 + 0)
+		indices[i + 1] = auto_cast ((i/6)*4 + 1)
+		indices[i + 2] = auto_cast ((i/6)*4 + 3)
+		indices[i + 3] = auto_cast ((i/6)*4 + 1)
+		indices[i + 4] = auto_cast ((i/6)*4 + 2)
+		indices[i + 5] = auto_cast ((i/6)*4 + 3)
+		i += 6;
 	}
 
 	state.bind.index_buffer = sg.make_buffer({
 		data = { ptr = &indices, size = size_of(indices) }
 	})
 
-	 pixels := [4*4]u32 {
-        0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
-        0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
-        0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFF000000,
-        0xFF000000, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF,
-    }
 	brick := images[Image_Id.brick]
+
 	state.bind.images[IMG__ourTexture] = sg.make_image({
 		width = brick.width,
 		height = brick.height,
@@ -238,7 +266,7 @@ frame :: proc "c" () {
 	sg.begin_pass({ action = state.pass_action, swapchain = sglue.swapchain() })
 	sg.apply_pipeline(state.pip)
 	sg.apply_bindings(state.bind)
-	sg.draw(0, 6, 1);
+	sg.draw(0, 6 * draw_frame.quad_count, 1);
 	sg.end_pass()
 	sg.commit()
 }
