@@ -53,8 +53,8 @@ hex_to_rgba :: proc (hex_cl: int) -> sg.Color {
 }
 
 Vertex :: struct {
-	pos: Vector3,
-	texCoord: Vector2,
+	pos: Vector2,
+	color: Vector4,
 }
 
 Quad :: [4]Vertex
@@ -86,21 +86,70 @@ Matrix4 :: linalg.Matrix4f32;
 COLOR_WHITE :: Vector4 {1,1,1,1}
 COLOR_RED :: Vector4 {1,0,0,1}
 
-draw_rect_xform :: proc (
-	pos: Vector2,
-	size: Vector2,
-	color: Vector4,
+
+draw_quad_projected :: proc(
+	world_to_clip: Matrix4,
+	positions: [4]Vector2,
+	colors: [4]Vector4,
+	tex_indices: [4]u8,
 ) {
+	using linalg
 
-	quad := &draw_frame.quads[draw_frame.quad_count]
+	if draw_frame.quad_count >= MAX_QUADS {
+		return
+	}
 
-	quad[0] = Vertex { pos = Vector3 {pos[0], pos[1] , 0}, texCoord = {0.5, 1.0}}
-	quad[1] = Vertex { pos = Vector3 {pos[0], pos[1] - size.y, 0}, texCoord = {0.5, 0.0} }
-	quad[2] = Vertex { pos = Vector3 {pos[0] - size.x, pos[1] - size.y, 0}, texCoord = {0.0, 0.0}}
-	quad[3] = Vertex { pos = Vector3 {pos[0] - size.x, pos[1], 0}, texCoord = {0.0, 1.0}}
-
+	verts := &draw_frame.quads[draw_frame.quad_count]
 
 	draw_frame.quad_count += 1
+
+	verts[0].pos = (world_to_clip * Vector4 {positions[0].x, positions[0].y, 0.0, 1.0}).xy
+	verts[1].pos = (world_to_clip * Vector4 {positions[1].x, positions[1].y, 0.0, 1.0}).xy
+	verts[2].pos = (world_to_clip * Vector4 {positions[2].x, positions[2].y, 0.0, 1.0}).xy
+	verts[3].pos = (world_to_clip * Vector4 {positions[3].x, positions[3].y, 0.0, 1.0}).xy
+
+	/**
+	verts[0].texCoord = tex_indices[0]	
+	verts[1].texCoord = tex_indices[1]	
+	verts[2].texCoord = tex_indices[2]	
+	verts[3].texCoord = tex_indices[3]	
+	**/	
+
+	verts[0].color = colors[0]
+	verts[1].color = colors[1]
+	verts[2].color = colors[2]
+	verts[3].color = colors[3]
+
+}
+
+draw_rect_projected :: proc (
+	world_to_clip: Matrix4,
+	size: Vector2,
+	col: Vector4=COLOR_WHITE,
+	img_id: Image_Id=.nil,
+) {
+
+	bl := v2{0, -size.y}
+	tl := v2{0, 0}
+	tr := v2{size.x, 0}
+	br := v2{size.x, -size.y}
+
+	tex_index := images[img_id].tex_index
+	if img_id == .nil {
+		tex_index = 255
+	}
+
+	draw_quad_projected(world_to_clip, {bl, tl, tr, br}, {col, col, col, col}, {tex_index, tex_index, tex_index, tex_index})
+
+}
+
+draw_rect_xform :: proc (
+	xform: Matrix4,
+	size: Vector2,
+	col: Vector4=COLOR_WHITE,
+	img_id: Image_Id=.nil
+) {
+	draw_rect_projected(draw_frame.projection * draw_frame.camera_xform * xform, size, col, img_id)
 }
 
 
@@ -150,6 +199,7 @@ init_images :: proc () {
 		img.data = img_data
 		
 		images[id] = img
+
 	}
 
 	image_count = highest_id + 1
@@ -181,13 +231,14 @@ init :: proc "c" () {
 
 	shd: sg.Shader = sg.make_shader(simple_shader_desc(sg.query_backend()));
 
- /* a vertex buffer with 4 vertices */
 
-	draw_frame.projection = linalg.matrix_ortho3d_f32(0, 0, auto_cast global_settings.window_w, auto_cast global_settings.window_h, -1, 1)
+	draw_frame.projection = linalg.matrix_ortho3d_f32((auto_cast global_settings.window_w) * -0.5,  (auto_cast global_settings.window_w) * 0.5, auto_cast global_settings.window_h * -0.5, (auto_cast global_settings.window_h) * 0.5, -1, 1)
+	draw_frame.camera_xform = Matrix4(1)
+	//draw_frame.camera_xform *= 0.1
 
 
-	draw_rect_xform(v2{-0.2, 0.5}, v2{0.4, 1.0}, COLOR_WHITE)
-	draw_rect_xform(v2{0.8, 0.5}, v2{0.4, 1.0}, COLOR_WHITE)
+	xform := linalg.matrix4_translate(v3{0, 0, 0})
+	draw_rect_xform(xform, v2{120, 120}, COLOR_RED, .nil)
 
 	state.bind.vertex_buffers[0] = sg.make_buffer({
 		data = { ptr = &draw_frame.quads, size = size_of(draw_frame.quads) }	
@@ -202,8 +253,8 @@ init :: proc "c" () {
 		// { 0, 1, 2,  0, 2, 3 }
 		indices[i + 0] = auto_cast ((i/6)*4 + 0)
 		indices[i + 1] = auto_cast ((i/6)*4 + 1)
-		indices[i + 2] = auto_cast ((i/6)*4 + 3)
-		indices[i + 3] = auto_cast ((i/6)*4 + 1)
+		indices[i + 2] = auto_cast ((i/6)*4 + 2)
+		indices[i + 3] = auto_cast ((i/6)*4 + 0)
 		indices[i + 4] = auto_cast ((i/6)*4 + 2)
 		indices[i + 5] = auto_cast ((i/6)*4 + 3)
 		i += 6;
@@ -213,6 +264,7 @@ init :: proc "c" () {
 		data = { ptr = &indices, size = size_of(indices) }
 	})
 
+	/**
 	brick := images[Image_Id.spritemap]
 
 	state.bind.images[IMG__ourTexture] = sg.make_image({
@@ -230,17 +282,18 @@ init :: proc "c" () {
 
 	stbi.image_free(brick.data)
 
-	
+	**/	
 
-	state.bind.samplers[SMP_ourTexture_smp] = sg.make_sampler({})
+	//state.bind.samplers[SMP_ourTexture_smp] = sg.make_sampler({})
 
 	state.pip = sg.make_pipeline({
 		shader = shd,
 		index_type = .UINT16,
 		layout = {
 			attrs = {
-				ATTR_simple_position = { format = .FLOAT3 },
-				ATTR_simple_aTexCoord = { format = .FLOAT2 },
+				ATTR_simple_position = { format = .FLOAT2 },
+	//			ATTR_simple_aTexCoord = { format = .FLOAT2 },
+				ATTR_simple_color0 = { format = .FLOAT4 },
 			},
 		},
 		cull_mode = .BACK,
