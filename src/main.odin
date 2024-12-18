@@ -158,7 +158,6 @@ draw_rect_xform :: proc (
 Image_Id :: enum {
 	nil,
 	brick,	
-	spritemap,
 }
 
 Image :: struct {
