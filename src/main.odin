@@ -4,8 +4,10 @@ import "base:runtime"
 import "core:fmt"
 
 
+import "core:math"
 import "core:math/linalg"
 import "core:os"
+import "core:time"
 
 import slog "../sokol-odin/sokol/log"
 import sg "../sokol-odin/sokol/gfx"
@@ -231,14 +233,6 @@ init :: proc "c" () {
 	shd: sg.Shader = sg.make_shader(simple_shader_desc(sg.query_backend()));
 
 
-	draw_frame.projection = linalg.matrix_ortho3d_f32((auto_cast global_settings.window_w) * -0.5,  (auto_cast global_settings.window_w) * 0.5, auto_cast global_settings.window_h * -0.5, (auto_cast global_settings.window_h) * 0.5, -1, 1)
-	draw_frame.camera_xform = Matrix4(1)
-	//draw_frame.camera_xform *= 0.1
-
-
-	xform := linalg.matrix4_translate(v3{0, 0, 0})
-	draw_rect_xform(xform, v2{120, 120}, COLOR_RED, .nil)
-
 	state.bind.vertex_buffers[0] = sg.make_buffer({
 		data = { ptr = &draw_frame.quads, size = size_of(draw_frame.quads) }	
 	})
@@ -312,14 +306,55 @@ init :: proc "c" () {
 
 }
 
+delta_t : f64 = 0
+elapsed_t: f64 = 0
+last_time : time.Time = time.now()
+
+
+position := Vector2{-100, -100}
+
+draw_game :: proc "c" () {
+	context = runtime.default_context()
+
+	// SET PROJECTION AND/OR CAMERA ZOOM
+	draw_frame.projection = linalg.matrix_ortho3d_f32((auto_cast global_settings.window_w) * -0.5,  (auto_cast global_settings.window_w) * 0.5, auto_cast global_settings.window_h * -0.5, (auto_cast global_settings.window_h) * 0.5, -1, 1)
+	draw_frame.camera_xform = Matrix4(1)
+	//draw_frame.camera_xform *= 0.1
+
+	position.x = (auto_cast math.sin(elapsed_t)) * 100
+	position.y = auto_cast math.cos(elapsed_t) * 100
+
+	xform := linalg.matrix4_translate(v3{position.x-60, position.y+60, 0})
+	draw_rect_xform(xform, v2{120, 120}, COLOR_RED, .nil)
+
+}
+
+reset_render :: proc () {
+	draw_frame.quad_count = 0
+}
+
 frame :: proc "c" () {
 	context = runtime.default_context()
+
+	// Delta time stuff
+	delta_t = time.duration_seconds(time.diff(last_time, time.now())) 
+	elapsed_t += delta_t
+	last_time = time.now()
+
+	draw_game()
+
+	sg.update_buffer(
+		state.bind.vertex_buffers[0],
+		{ ptr = &draw_frame.quads[0], size = size_of(Quad) * len(draw_frame.quads)}
+	)
 	sg.begin_pass({ action = state.pass_action, swapchain = sglue.swapchain() })
 	sg.apply_pipeline(state.pip)
 	sg.apply_bindings(state.bind)
 	sg.draw(0, 6 * draw_frame.quad_count, 1);
 	sg.end_pass()
 	sg.commit()
+
+	reset_render()
 }
 
 cleanup :: proc "c" () {
