@@ -94,8 +94,8 @@ draw_rect_xform :: proc (
 
 	quad := &draw_frame.quads[draw_frame.quad_count]
 
-	quad[0] = Vertex { pos = Vector3 {pos[0], pos[1] , 0}, texCoord = {1.0, 1.0}}
-	quad[1] = Vertex { pos = Vector3 {pos[0], pos[1] - size.y, 0}, texCoord = {1.0, 0.0} }
+	quad[0] = Vertex { pos = Vector3 {pos[0], pos[1] , 0}, texCoord = {0.5, 1.0}}
+	quad[1] = Vertex { pos = Vector3 {pos[0], pos[1] - size.y, 0}, texCoord = {0.5, 0.0} }
 	quad[2] = Vertex { pos = Vector3 {pos[0] - size.x, pos[1] - size.y, 0}, texCoord = {0.0, 0.0}}
 	quad[3] = Vertex { pos = Vector3 {pos[0] - size.x, pos[1], 0}, texCoord = {0.0, 1.0}}
 
@@ -109,6 +109,7 @@ draw_rect_xform :: proc (
 Image_Id :: enum {
 	nil,
 	brick,	
+	spritemap,
 }
 
 Image :: struct {
@@ -154,6 +155,9 @@ init_images :: proc () {
 	image_count = highest_id + 1
 }
 
+
+
+
 init :: proc "c" () {
 	context = runtime.default_context()
 
@@ -179,15 +183,8 @@ init :: proc "c" () {
 
  /* a vertex buffer with 4 vertices */
 
+	draw_frame.projection = linalg.matrix_ortho3d_f32(0, 0, auto_cast global_settings.window_w, auto_cast global_settings.window_h, -1, 1)
 
-
-	vertices := [?]f32  {
-		// positions 		// Texture Coords
-		 0.5,  0.5, 0.0,	1.0, 1.0,    
-		 0.5, -0.5, 0.0,   	1.0, 0.0, 
-		-0.5, -0.5, 0.0,   	0.0, 0.0,
-		-0.5,  0.5, 0.0,    0.0, 1.0, 
-	};
 
 	draw_rect_xform(v2{-0.2, 0.5}, v2{0.4, 1.0}, COLOR_WHITE)
 	draw_rect_xform(v2{0.8, 0.5}, v2{0.4, 1.0}, COLOR_WHITE)
@@ -216,7 +213,7 @@ init :: proc "c" () {
 		data = { ptr = &indices, size = size_of(indices) }
 	})
 
-	brick := images[Image_Id.brick]
+	brick := images[Image_Id.spritemap]
 
 	state.bind.images[IMG__ourTexture] = sg.make_image({
 		width = brick.width,
@@ -232,6 +229,8 @@ init :: proc "c" () {
 	})
 
 	stbi.image_free(brick.data)
+
+	
 
 	state.bind.samplers[SMP_ourTexture_smp] = sg.make_sampler({})
 
