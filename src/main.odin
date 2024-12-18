@@ -23,7 +23,7 @@ Settings :: struct {
 global_settings: Settings = {
 	window_w = 1280,
 	window_h = 720,
-	title = "Houses&Houses"
+	title = "game3"
 }
 
 state: struct {
