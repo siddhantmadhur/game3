@@ -116,10 +116,10 @@ draw_quad_projected :: proc(
 	verts[2].pos = (world_to_clip * Vector4 {positions[2].x, positions[2].y, 0.0, 1.0}).xy
 	verts[3].pos = (world_to_clip * Vector4 {positions[3].x, positions[3].y, 0.0, 1.0}).xy
 
-	verts[0].tex_index = 0 
-	verts[1].tex_index = 0 
-	verts[2].tex_index = 0  
-	verts[3].tex_index = 0 
+	verts[0].tex_index = tex_indices[0]
+	verts[1].tex_index = tex_indices[1]
+	verts[2].tex_index = tex_indices[2]
+	verts[3].tex_index = tex_indices[3]
 
 	verts[0].uv = uvs[0]	
 	verts[1].uv = uvs[1]	
@@ -154,6 +154,8 @@ draw_rect_projected :: proc (
 	tex_index := images[img_id].tex_index
 	if img_id == .nil {
 		tex_index = 255
+	} else {
+		tex_index = 0
 	}
 
 	draw_quad_projected(world_to_clip, {bl, tl, tr, br}, {col, col, col, col}, {uv0.xy, uv0.xw, uv0.zw, uv0.zy}, {tex_index, tex_index, tex_index, tex_index})
@@ -410,7 +412,7 @@ draw_game :: proc "c" () {
 	position2.x = (auto_cast math.sin(elapsed_t-math.PI)) * radius
 	position2.y = (auto_cast math.cos(elapsed_t-math.PI)) * radius
 
-	image_height:f32 = 200
+	image_height:f32 = 120
 
 	xform := linalg.matrix4_translate(v3{position.x-(image_height / 2.0), position.y+(image_height / 2.0), 0})
 	draw_rect_xform(xform, v2{image_height, image_height}, COLOR_RED, img_id=.housemd)

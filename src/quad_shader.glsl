@@ -46,7 +46,6 @@ void main() {
 	if (tex_index == 0) {
 		tex_col = texture(sampler2D(tex0, default_sampler), uv);
 	} 	
-	col_out = tex_col;
 	col_out *= color;
 	
 }
