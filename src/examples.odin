@@ -13,6 +13,8 @@ import sapp "../sokol-odin/sokol/app"
 // EXAMPLE - HOUSE
 // Test to see multiple images and text rendering
 
+example_house_bg_color :: 0x443355FF
+
 
 example_house_event :: proc "c" (event: ^sapp.Event) {
 	context = runtime.default_context()
@@ -27,8 +29,11 @@ example_house_event :: proc "c" (event: ^sapp.Event) {
 						fmt.printfln("Spacebar just pressed!")
 					}
 				case .ESCAPE:
+				fmt.printfln("Quitting game...")
 					sapp.quit()
 			}
+		case .MOUSE_MOVE:
+			fmt.printfln("Mouse move: (%.01f, %.01f)", event.mouse_x, event.mouse_y)
 
 	}
 
@@ -74,6 +79,7 @@ pong_game : struct {
 	player1: PongPlayer
 }
 
+example_pong_bg_color :: 0x0
 
 example_pong_event :: proc "c" (event: ^sapp.Event) {
 	context = runtime.default_context()
