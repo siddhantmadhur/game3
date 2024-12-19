@@ -8,6 +8,7 @@ import "core:math"
 import "core:math/linalg"
 import "core:os"
 import "core:time"
+import "core:mem"
 
 import slog "../sokol-odin/sokol/log"
 import sg "../sokol-odin/sokol/gfx"
@@ -15,6 +16,7 @@ import sapp "../sokol-odin/sokol/app"
 import sglue "../sokol-odin/sokol/glue"
 
 import stbi "vendor:stb/image"
+import stbrp "vendor:stb/rect_pack"
 
 Settings :: struct {
 	window_w: i32,
@@ -57,7 +59,9 @@ hex_to_rgba :: proc (hex_cl: int) -> sg.Color {
 Vertex :: struct {
 	pos: Vector2,
 	color: Vector4,
-	texCoord: Vector2,
+	uv: Vector2,
+	tex_index: u8,
+	_pad: [3]u8,
 }
 
 Quad :: [4]Vertex
@@ -94,6 +98,7 @@ draw_quad_projected :: proc(
 	world_to_clip: Matrix4,
 	positions: [4]Vector2,
 	colors: [4]Vector4,
+	uvs: [4]Vector2,
 	tex_indices: [4]u8,
 ) {
 	using linalg
@@ -111,17 +116,15 @@ draw_quad_projected :: proc(
 	verts[2].pos = (world_to_clip * Vector4 {positions[2].x, positions[2].y, 0.0, 1.0}).xy
 	verts[3].pos = (world_to_clip * Vector4 {positions[3].x, positions[3].y, 0.0, 1.0}).xy
 
-	/**
-	verts[0].texCoord = tex_indices[0]	
-	verts[1].texCoord = tex_indices[1]	
-	verts[2].texCoord = tex_indices[2]	
-	verts[3].texCoord = tex_indices[3]	
-	**/	
+	verts[0].tex_index = 0 
+	verts[1].tex_index = 0 
+	verts[2].tex_index = 0  
+	verts[3].tex_index = 0 
 
-	verts[0].texCoord = v2{0.0, 0.0};
-	verts[1].texCoord = v2{0.0, 1.0};
-	verts[2].texCoord = v2{1.0, 1.0};
-	verts[3].texCoord = v2{1.0, 0.0};
+	verts[0].uv = uvs[0]	
+	verts[1].uv = uvs[1]	
+	verts[2].uv = uvs[2]	
+	verts[3].uv = uvs[3]	
 
 	verts[0].color = colors[0]
 	verts[1].color = colors[1]
@@ -134,6 +137,7 @@ draw_rect_projected :: proc (
 	world_to_clip: Matrix4,
 	size: Vector2,
 	col: Vector4=COLOR_WHITE,
+	uv: Vector4=DEFAULT_UV,
 	img_id: Image_Id=.nil,
 ) {
 
@@ -142,12 +146,17 @@ draw_rect_projected :: proc (
 	tr := v2{size.x, 0}
 	br := v2{size.x, -size.y}
 
+	uv0 := uv
+	if uv == DEFAULT_UV {
+		uv0 = images[img_id].atlas_uvs
+	}
+
 	tex_index := images[img_id].tex_index
 	if img_id == .nil {
 		tex_index = 255
 	}
 
-	draw_quad_projected(world_to_clip, {bl, tl, tr, br}, {col, col, col, col}, {tex_index, tex_index, tex_index, tex_index})
+	draw_quad_projected(world_to_clip, {bl, tl, tr, br}, {col, col, col, col}, {uv0.xy, uv0.xw, uv0.zw, uv0.zy}, {tex_index, tex_index, tex_index, tex_index})
 
 }
 
@@ -155,9 +164,10 @@ draw_rect_xform :: proc (
 	xform: Matrix4,
 	size: Vector2,
 	col: Vector4=COLOR_WHITE,
+	uv: Vector4=DEFAULT_UV,
 	img_id: Image_Id=.nil
 ) {
-	draw_rect_projected(draw_frame.projection * draw_frame.camera_xform * xform, size, col, img_id)
+	draw_rect_projected(draw_frame.projection * draw_frame.camera_xform * xform, size, col, uv, img_id)
 }
 
 
@@ -165,8 +175,9 @@ draw_rect_xform :: proc (
 
 Image_Id :: enum {
 	nil,
-	brick,	
-	housemd
+	housemd,
+	wilsonmd,
+	brick,
 }
 
 Image :: struct {
@@ -211,21 +222,98 @@ init_images :: proc () {
 	}
 
 	image_count = highest_id + 1
+
+	pack_images_into_atlas()
 }
 
+Atlas :: struct {
+	w, h: int,
+	sg_image: sg.Image,
+}
+atlas: Atlas
+// We're hardcoded to use just 1 atlas now since I don't think we'll need more
+// It would be easy enough to extend though. Just add in more texture slots in the shader
+// :pack
+pack_images_into_atlas :: proc() {
 
+	// TODO - add a single pixel of padding for each so we avoid the edge oversampling issue
+
+	// 8192 x 8192 is the WGPU recommended max I think
+	atlas.w = 1300
+	atlas.h = 1300
+	
+	cont : stbrp.Context
+	nodes : [512]stbrp.Node // #volatile with atlas.w
+	stbrp.init_target(&cont, auto_cast atlas.w, auto_cast atlas.h, &nodes[0], auto_cast atlas.w)
+	
+	rects : [dynamic]stbrp.Rect
+	for img, id in images {
+		if img.width == 0 {
+			continue
+		}
+		append(&rects, stbrp.Rect{ id=auto_cast id, w=auto_cast img.width, h=auto_cast img.height })
+	}
+	
+	succ := stbrp.pack_rects(&cont, &rects[0], auto_cast len(rects))
+	if succ == 0 {
+		assert(false, "failed to pack all the rects, ran out of space?")
+	}
+	
+	// allocate big atlas
+	raw_data, err := mem.alloc(atlas.w * atlas.h * 4)
+	defer mem.free(raw_data)
+	mem.set(raw_data, 255, atlas.w*atlas.h*4)
+	
+	// copy rect row-by-row into destination atlas
+	for rect in rects {
+		img := &images[rect.id]
+		
+		// copy row by row into atlas
+		for row in 0..<rect.h {
+			src_row := mem.ptr_offset(&img.data[0], row * rect.w * 4)
+			dest_row := mem.ptr_offset(cast(^u8)raw_data, ((rect.y + row) * auto_cast atlas.w + rect.x) * 4)
+			mem.copy(dest_row, src_row, auto_cast rect.w * 4)
+		}
+		
+		// yeet old data
+		stbi.image_free(img.data)
+		img.data = nil;
+		
+		// img.atlas_x = auto_cast rect.x
+		// img.atlas_y = auto_cast rect.y
+		
+		img.atlas_uvs.x = cast(f32)rect.x / cast(f32)atlas.w
+		img.atlas_uvs.y = cast(f32)rect.y / cast(f32)atlas.h
+		img.atlas_uvs.z = img.atlas_uvs.x + cast(f32)img.width / cast(f32)atlas.w
+		img.atlas_uvs.w = img.atlas_uvs.y + cast(f32)img.height / cast(f32)atlas.h
+	}
+	
+	stbi.write_png("atlas.png", auto_cast atlas.w, auto_cast atlas.h, 4, raw_data, 4 * auto_cast atlas.w)
+	
+	// setup image for GPU
+	desc : sg.Image_Desc
+	desc.width = auto_cast atlas.w
+	desc.height = auto_cast atlas.h
+	desc.pixel_format = .RGBA8
+	desc.data.subimage[0][0] = {ptr=raw_data, size=auto_cast (atlas.w*atlas.h*4)}
+	atlas.sg_image = sg.make_image(desc)
+	if atlas.sg_image.id == sg.INVALID_ID {
+		fmt.printfln("failed to make image")
+	}
+}
 
 
 init :: proc "c" () {
 	context = runtime.default_context()
 
-	init_images()
 	
 
 	sg.setup({
 		environment = sglue.environment(),
 		logger = { func = slog.func },
 	})
+	
+	
 	
 	switch sg.query_backend() {
 		case .D3D11: fmt.println(">> using D3D11 backend")
@@ -235,13 +323,12 @@ init :: proc "c" () {
         case .DUMMY: fmt.println(">> using dummy backend")
 	}
 
-
-
-	shd: sg.Shader = sg.make_shader(simple_shader_desc(sg.query_backend()));
-
+	
+	init_images()
 
 	state.bind.vertex_buffers[0] = sg.make_buffer({
-		data = { ptr = &draw_frame.quads, size = size_of(draw_frame.quads) }	
+		usage = .DYNAMIC,
+		size = size_of(Quad) * len(draw_frame.quads),
 	})
 
 
@@ -261,52 +348,41 @@ init :: proc "c" () {
 	}
 
 	state.bind.index_buffer = sg.make_buffer({
+		type = .INDEXBUFFER,
 		data = { ptr = &indices, size = size_of(indices) }
 	})
 
-	brick := images[Image_Id.housemd]
 
-	state.bind.images[IMG__ourTexture] = sg.make_image({
-		width = brick.width,
-		height = brick.height,
-		pixel_format = sg.Pixel_Format.RGBA8,
-		data = {
-			subimage = {
-				0 = {
-					0 = { ptr = brick.data, size = auto_cast (brick.width * brick.height * 4) },
-				},
-			},
-		},
-	})
+	state.bind.samplers[SMP_default_sampler] = sg.make_sampler({})
 
-	stbi.image_free(brick.data)
-
-
-	state.bind.samplers[SMP_ourTexture_smp] = sg.make_sampler({})
-
-	state.pip = sg.make_pipeline({
-		shader = shd,
+	pipeline_desc : sg.Pipeline_Desc = {
+		shader = sg.make_shader(quad_shader_desc(sg.query_backend())),
 		index_type = .UINT16,
 		layout = {
 			attrs = {
-				ATTR_simple_position = { format = .FLOAT2 },
-	//			ATTR_simple_aTexCoord = { format = .FLOAT2 },
-				ATTR_simple_color0 = { format = .FLOAT4 },
-				ATTR_simple_aTexCoord = { format = .FLOAT2 },
+				ATTR_quad_position = { format = .FLOAT2 },
+				ATTR_quad_color0 = { format = .FLOAT4 },
+				ATTR_quad_uv0 = { format = .FLOAT2 },
+				ATTR_quad_bytes0 = { format = .UBYTE4N },
 			},
-		},
-		cull_mode = .BACK,
-		depth = {
-			compare = .LESS_EQUAL,
-			write_enabled = true,
 		}
-	})
+	}
+	blend_state : sg.Blend_State = {
+		enabled = true,
+		src_factor_rgb = .SRC_ALPHA,
+		dst_factor_rgb = .ONE_MINUS_SRC_ALPHA,
+		op_rgb = .ADD,
+		src_factor_alpha = .ONE,
+		dst_factor_alpha = .ONE_MINUS_SRC_ALPHA,
+		op_alpha = .ADD,
+	}
+	pipeline_desc.colors[0] = { blend = blend_state }
+	state.pip = sg.make_pipeline(pipeline_desc)
 
 
 	state.pass_action = {
 		colors = {
-			0 = { load_action = .CLEAR, clear_value = hex_to_rgba(0x443355FF) }
-		}
+			0 = { load_action = .CLEAR, clear_value = hex_to_rgba(0x443355FF) } }
 	}
 
 
@@ -317,7 +393,6 @@ elapsed_t: f64 = 0
 last_time : time.Time = time.now()
 
 radius:f32 = 150
-position := Vector2{-radius, -radius}
 
 draw_game :: proc "c" () {
 	context = runtime.default_context()
@@ -327,13 +402,21 @@ draw_game :: proc "c" () {
 	draw_frame.camera_xform = Matrix4(1)
 	//draw_frame.camera_xform *= 0.1
 
+	position := Vector2{-radius, -radius}
 	position.x = (auto_cast math.sin(elapsed_t)) * radius
 	position.y = auto_cast math.cos(elapsed_t) * radius
+
+	position2 := Vector2{-radius, -radius}
+	position2.x = (auto_cast math.sin(elapsed_t-math.PI)) * radius
+	position2.y = (auto_cast math.cos(elapsed_t-math.PI)) * radius
 
 	image_height:f32 = 200
 
 	xform := linalg.matrix4_translate(v3{position.x-(image_height / 2.0), position.y+(image_height / 2.0), 0})
-	draw_rect_xform(xform, v2{image_height, image_height}, COLOR_WHITE, .nil)
+	draw_rect_xform(xform, v2{image_height, image_height}, COLOR_RED, img_id=.housemd)
+	
+	xform2 := linalg.matrix4_translate(v3{position2.x-(image_height / 2.0), position2.y+(image_height / 2.0), 0})
+	draw_rect_xform(xform2, v2{image_height, image_height}, COLOR_WHITE, img_id=.wilsonmd)
 
 }
 
@@ -350,6 +433,8 @@ frame :: proc "c" () {
 	last_time = time.now()
 
 	draw_game()
+
+	state.bind.images[IMG_tex0] = atlas.sg_image
 
 	sg.update_buffer(
 		state.bind.vertex_buffers[0],

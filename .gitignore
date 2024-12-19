@@ -2,3 +2,4 @@ src.bin
 *.a
 sokol-shdc 
 *.shader.odin
+atlas.png
