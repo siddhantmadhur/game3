@@ -17,6 +17,7 @@ import sglue "../sokol-odin/sokol/glue"
 
 import stbi "vendor:stb/image"
 import stbrp "vendor:stb/rect_pack"
+import stbtt "vendor:stb/truetype"
 
 Settings :: struct {
 	window_w: i32,
@@ -93,6 +94,143 @@ Matrix4 :: linalg.Matrix4f32;
 COLOR_WHITE :: Vector4 {1,1,1,1}
 COLOR_RED :: Vector4 {1,0,0,1}
 
+xform_translate :: proc(pos: Vector2) -> Matrix4 {
+	return linalg.matrix4_translate(v3{pos.x, pos.y, 0})
+}
+xform_rotate :: proc(angle: f32) -> Matrix4 {
+	return linalg.matrix4_rotate(math.to_radians(angle), v3{0,0,1})
+}
+xform_scale :: proc(scale: Vector2) -> Matrix4 {
+	return linalg.matrix4_scale(v3{scale.x, scale.y, 1});
+}
+
+Pivot :: enum {
+	bottom_left,
+	bottom_center,
+	bottom_right,
+	center_left,
+	center_center,
+	center_right,
+	top_left,
+	top_center,
+	top_right,
+}
+scale_from_pivot :: proc(pivot: Pivot) -> Vector2 {
+	switch pivot {
+		case .bottom_left: return v2{0.0, 0.0}
+		case .bottom_center: return v2{0.5, 0.0}
+		case .bottom_right: return v2{1.0, 0.0}
+		case .center_left: return v2{0.0, 0.5}
+		case .center_center: return v2{0.5, 0.5}
+		case .center_right: return v2{1.0, 0.5}
+		case .top_center: return v2{0.5, 1.0}
+		case .top_left: return v2{0.0, 1.0}
+		case .top_right: return v2{1.0, 1.0}
+	}
+	return {};
+}
+
+
+//
+// :FONT
+//
+draw_text :: proc(pos: Vector2, text: string, scale:= 1.0) {
+	using stbtt
+	
+	x: f32
+	y: f32
+
+	for char in text {
+		
+		advance_x: f32
+		advance_y: f32
+		q: aligned_quad
+		GetBakedQuad(&font.char_data[0], font_bitmap_w, font_bitmap_h, cast(i32)char - 32, &advance_x, &advance_y, &q, false)
+		// this is the the data for the aligned_quad we're given, with y+ going down
+		// x0, y0,     s0, t0, // top-left
+		// x1, y1,     s1, t1, // bottom-right
+		
+		
+		size := v2{ abs(q.x0 - q.x1), abs(q.y0 - q.y1) }
+		
+		bottom_left := v2{ q.x0, -q.y1 }
+		top_right := v2{ q.x1, -q.y0 }
+		assert(bottom_left + size == top_right)
+
+		bottom_left.y += size.y
+		top_right.y += size.y
+		
+		offset_to_render_at := v2{x,y} + bottom_left
+		
+		uv := v4{ q.s0, q.t1,
+							q.s1, q.t0 }
+		
+		xform := Matrix4(1)
+		xform *= xform_translate(pos)
+		xform *= xform_scale(v2{auto_cast scale, auto_cast scale})
+		xform *= xform_translate(offset_to_render_at)
+		draw_rect_xform(xform, size, uv=uv, img_id=font.img_id)
+		
+		x += advance_x
+		y += -advance_y
+	}
+
+}
+
+font_bitmap_w :: 256
+font_bitmap_h :: 256
+char_count :: 96
+Font :: struct {
+	char_data: [char_count]stbtt.bakedchar,
+	img_id: Image_Id,
+}
+font: Font
+
+init_fonts :: proc() {
+	using stbtt
+	
+	bitmap, _ := mem.alloc(font_bitmap_w * font_bitmap_h)
+	font_height := 15 // for some reason this only bakes properly at 15 ? it's a 16px font dou...
+	path := "assets/fonts/PressStart2P-Regular.ttf"
+	ttf_data, err := os.read_entire_file(path)
+	assert(ttf_data != nil, "failed to read font")
+	
+	ret := BakeFontBitmap(raw_data(ttf_data), 0, auto_cast font_height, auto_cast bitmap, font_bitmap_w, font_bitmap_h, 32, char_count, &font.char_data[0])
+	assert(ret > 0, "not enough space in bitmap")
+	
+	stbi.write_png("font.png", auto_cast font_bitmap_w, auto_cast font_bitmap_h, 1, bitmap, auto_cast font_bitmap_w)
+	
+	// setup font atlas so we can use it in the shader
+	desc : sg.Image_Desc
+	desc.width = auto_cast font_bitmap_w
+	desc.height = auto_cast font_bitmap_h
+	desc.pixel_format = .R8
+	desc.data.subimage[0][0] = {ptr=bitmap, size=auto_cast (font_bitmap_w*font_bitmap_h)}
+	sg_img := sg.make_image(desc)
+	if sg_img.id == sg.INVALID_ID {
+		fmt.printfln("failed to make image")
+	}
+	
+	id := store_image(font_bitmap_w, font_bitmap_h, 1, sg_img)
+	font.img_id = id
+}
+// kind scuffed...
+// but I'm abusing the Images to store the font atlas by just inserting it at the end with the next id
+store_image :: proc(w: int, h: int, tex_index: u8, sg_img: sg.Image) -> Image_Id {
+
+	img : Image
+	img.width = auto_cast w
+	img.height = auto_cast h
+	img.tex_index = tex_index
+	img.sg_img = sg_img
+	img.atlas_uvs = DEFAULT_UV
+	
+	id := image_count
+	images[id] = img
+	image_count += 1
+	
+	return auto_cast id
+}
 
 draw_quad_projected :: proc(
 	world_to_clip: Matrix4,
@@ -152,12 +290,9 @@ draw_rect_projected :: proc (
 	}
 
 	tex_index := images[img_id].tex_index
-	if img_id == .nil {
+	if img_id == .nil  {
 		tex_index = 255
-	} else {
-		tex_index = 0
-	}
-
+	} 
 	draw_quad_projected(world_to_clip, {bl, tl, tr, br}, {col, col, col, col}, {uv0.xy, uv0.xw, uv0.zw, uv0.zy}, {tex_index, tex_index, tex_index, tex_index})
 
 }
@@ -229,6 +364,7 @@ init_images :: proc () {
 		img.width = width
 		img.height = height
 		img.data = img_data
+		img.tex_index = 0
 		
 		images[id] = img
 
@@ -338,6 +474,7 @@ init :: proc "c" () {
 
 	
 	init_images()
+	init_fonts()
 
 	state.bind.vertex_buffers[0] = sg.make_buffer({
 		usage = .DYNAMIC,
@@ -423,6 +560,7 @@ frame :: proc "c" () {
 	draw_game()
 
 	state.bind.images[IMG_tex0] = atlas.sg_image
+	state.bind.images[IMG_tex1] = images[font.img_id].sg_img
 
 	sg.update_buffer(
 		state.bind.vertex_buffers[0],

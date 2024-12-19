@@ -30,6 +30,7 @@ void main() {
 //
 @fs fs
 layout(binding=0) uniform texture2D tex0;
+layout(binding=1) uniform texture2D tex1;
 layout(binding=0) uniform sampler default_sampler;
 
 in vec4 color;
@@ -45,7 +46,10 @@ void main() {
 	vec4 tex_col = vec4(1.0);
 	if (tex_index == 0) {
 		tex_col = texture(sampler2D(tex0, default_sampler), uv);
-	} 	
+	} else if (tex_index == 1) {
+		tex_col.a = texture(sampler2D(tex1, default_sampler), uv).r;
+	}
+	col_out = tex_col;
 	col_out *= color;
 	
 }

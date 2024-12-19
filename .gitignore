@@ -3,3 +3,4 @@ src.bin
 sokol-shdc 
 *.shader.odin
 atlas.png
+font.png

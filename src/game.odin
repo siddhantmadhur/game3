@@ -30,4 +30,6 @@ draw_game :: proc "c" () {
 	
 	draw_rect(v2{position2.x-(image_height / 2.0), position2.y+(image_height / 2.0)}, v2{image_height, image_height}, COLOR_WHITE, img_id=.wilsonmd)
 
+	draw_text(v2{0, 0}, "Hello, World")
+
 }
