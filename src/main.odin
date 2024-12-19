@@ -28,7 +28,7 @@ Settings :: struct {
 global: Settings = {
 	window_w = 1280,
 	window_h = 720,
-	title = "game3"
+	title = "game3",
 }
 
 state: struct {
@@ -475,6 +475,7 @@ init :: proc "c" () {
 	
 	init_images()
 	init_fonts()
+	game_init()
 
 	state.bind.vertex_buffers[0] = sg.make_buffer({
 		usage = .DYNAMIC,
@@ -532,7 +533,7 @@ init :: proc "c" () {
 
 	state.pass_action = {
 		colors = {
-			0 = { load_action = .CLEAR, clear_value = hex_to_rgba(0x443355FF) } }
+			0 = { load_action = .CLEAR, clear_value = hex_to_rgba(bg_color) } }
 	}
 
 
@@ -557,7 +558,8 @@ frame :: proc "c" () {
 	elapsed_t += delta_t
 	last_time = time.now()
 
-	game()
+
+	game_render()
 
 	state.bind.images[IMG_tex0] = atlas.sg_image
 	state.bind.images[IMG_tex1] = images[font.img_id].sg_img
@@ -585,6 +587,7 @@ main :: proc() {
 	sapp.run({
 		init_cb = init,
 		frame_cb = frame,
+		event_cb = game_event,
 		cleanup_cb = cleanup,
 		width = global.window_w,
 		height = global.window_h,
