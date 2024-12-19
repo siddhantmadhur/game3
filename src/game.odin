@@ -8,11 +8,11 @@ import "core:math"
 import "core:math/linalg"
 
 
-draw_game :: proc "c" () {
+game :: proc "c" () {
 	context = runtime.default_context()
 
 	// SET PROJECTION AND/OR CAMERA ZOOM
-	draw_frame.projection = linalg.matrix_ortho3d_f32((auto_cast global_settings.window_w) * -0.5,  (auto_cast global_settings.window_w) * 0.5, auto_cast global_settings.window_h * -0.5, (auto_cast global_settings.window_h) * 0.5, -1, 1)
+	draw_frame.projection = linalg.matrix_ortho3d_f32((auto_cast global.window_w) * -0.5,  (auto_cast global.window_w) * 0.5, auto_cast global.window_h * -0.5, (auto_cast global.window_h) * 0.5, -1, 1)
 	draw_frame.camera_xform = Matrix4(1)
 	//draw_frame.camera_xform *= 0.1
 

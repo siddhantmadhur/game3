@@ -25,7 +25,7 @@ Settings :: struct {
 	title: cstring,
 }
 
-global_settings: Settings = {
+global: Settings = {
 	window_w = 1280,
 	window_h = 720,
 	title = "game3"
@@ -557,7 +557,7 @@ frame :: proc "c" () {
 	elapsed_t += delta_t
 	last_time = time.now()
 
-	draw_game()
+	game()
 
 	state.bind.images[IMG_tex0] = atlas.sg_image
 	state.bind.images[IMG_tex1] = images[font.img_id].sg_img
@@ -586,9 +586,9 @@ main :: proc() {
 		init_cb = init,
 		frame_cb = frame,
 		cleanup_cb = cleanup,
-		width = global_settings.window_w,
-		height = global_settings.window_h,
-		window_title = global_settings.title,
+		width = global.window_w,
+		height = global.window_h,
+		window_title = global.title,
 		icon = { sokol_default = true },
 		logger = { func = slog.func },
 	})
