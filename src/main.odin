@@ -172,6 +172,17 @@ draw_rect_xform :: proc (
 	draw_rect_projected(draw_frame.projection * draw_frame.camera_xform * xform, size, col, uv, img_id)
 }
 
+draw_rect :: proc (
+	pos: Vector2,
+	size: Vector2,
+	color: Vector4=COLOR_WHITE,
+	uv: Vector4=DEFAULT_UV,
+	img_id: Image_Id=.nil
+) {
+	xform := linalg.matrix4_translate(v3{pos.x, pos.y, 0})
+	draw_rect_xform(xform, size, color, uv, img_id)
+}
+
 
 // :Image stuff
 
@@ -414,11 +425,9 @@ draw_game :: proc "c" () {
 
 	image_height:f32 = 120
 
-	xform := linalg.matrix4_translate(v3{position.x-(image_height / 2.0), position.y+(image_height / 2.0), 0})
-	draw_rect_xform(xform, v2{image_height, image_height}, COLOR_RED, img_id=.housemd)
+	draw_rect(v2{position.x-(image_height / 2.0), position.y+(image_height / 2.0)}, v2{image_height, image_height}, COLOR_RED, img_id=.housemd)
 	
-	xform2 := linalg.matrix4_translate(v3{position2.x-(image_height / 2.0), position2.y+(image_height / 2.0), 0})
-	draw_rect_xform(xform2, v2{image_height, image_height}, COLOR_WHITE, img_id=.wilsonmd)
+	draw_rect(v2{position2.x-(image_height / 2.0), position2.y+(image_height / 2.0)}, v2{image_height, image_height}, COLOR_WHITE, img_id=.wilsonmd)
 
 }
 
