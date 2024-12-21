@@ -34,7 +34,12 @@ game: struct {
 	mouse_pos:        v2,
 	camera_pos:       v2,
 	camera_zoom:      f32,
-	world: [GRID_W][GRID_W]TileId,
+	world:            [GRID_W][GRID_W]TileId,
+	spawn_point:      GridPos,
+	finish_point:     GridPos,
+	enemies: 		  [128]Entity,
+	enemies_n: 		  int,
+	enemy_last_added: f64,
 }
 
 
@@ -42,7 +47,7 @@ TileId :: enum {
 	none,
 	path,
 	spawn,
-	finish
+	finish,
 }
 
 current_event: enum {
@@ -67,7 +72,7 @@ tower_game_init :: proc() {
 	game.camera_pos = v2{0, 0}
 	game.camera_zoom = 1
 
-	game.world = [GRID_W][GRID_H]TileId{
+	game.world = [GRID_W][GRID_H]TileId {
 		{.none, .spawn, .none, .none, .none, .none, .none, .none},
 		{.none, .path, .none, .none, .none, .none, .none, .none},
 		{.none, .path, .none, .none, .none, .none, .none, .none},
@@ -78,13 +83,15 @@ tower_game_init :: proc() {
 		{.none, .none, .none, .none, .finish, .none, .none, .none},
 	}
 
+	game.enemies_n = 0
+	game.enemy_last_added = elapsed_t
+
+	game.spawn_point = gp{0, 1}
+	game.finish_point = gp{7, 4}
 
 }
 
-GridPos :: struct {
-	x: int,
-	y: int,
-}
+GridPos :: [2]int
 
 gp :: GridPos
 
@@ -100,7 +107,7 @@ coord_to_grid :: proc(coord: Vector2) -> GridPos {
 
 	y := ((2 * a) / GRID_TILE.x) + (GRID_W) - x
 
-	return gp{int(math.floor(x))+2, int(math.floor(y ) -2)}
+	return gp{int(math.floor(x)) + 2, int(math.floor(y) - 2)}
 }
 
 grid_to_coord :: proc(grid: GridPos) -> Vector2 {
@@ -121,6 +128,41 @@ grid_to_coord :: proc(grid: GridPos) -> Vector2 {
 	//draw_text(font, sprint(get_temporary_allocator(), STR("%d, %d"), x, y), font_height, v2(x_coord, y_coord), v2(0.1, 0.1), COLOR_RED);
 	//pop_z_layer();
 	return v2{x_coord, y_coord}
+}
+
+
+Entity :: struct {
+	image_id: Image_Id,
+	position: Vector2,
+	travel_map: [GRID_W][GRID_H]bool,
+	next_destination: Vector2,
+	speed: f32,
+	health: f32,
+	max_health: f32,
+}
+
+find_next :: proc (
+	grid: GridPos,
+	travel_map: [GRID_W][GRID_H]bool,
+	tile_id: TileId
+) -> (GridPos, bool) {
+	dest := gp{0, 0}
+	found := false
+	if grid.x < GRID_W-1 && travel_map[grid.x+1][grid.y] == false && game.world[grid.x+1][grid.y] == tile_id {
+		dest = gp{grid.x+1, grid.y}
+		found = true
+	} else if grid.x > 0 && travel_map[grid.x-1][grid.y] == false && game.world[grid.x-1][grid.y] == tile_id {
+		dest = gp{grid.x-1, grid.y}
+		found = true
+	} else if grid.y < GRID_H -1 && travel_map[grid.x][grid.y+1] == false && game.world[grid.x][grid.y + 1] == tile_id {
+		dest = gp{grid.x, grid.y + 1}
+		found = true
+	} else if grid.y > 0 && travel_map[grid.x][grid.y-1] == false && game.world[grid.x][grid.y - 1] == tile_id {
+		dest = gp{grid.x, grid.y - 1}
+		found = true
+	} 
+	return dest, found
+
 }
 
 // Runs every frame
@@ -146,6 +188,66 @@ tower_game_render :: proc "c" () {
 	if (elapsed_t - game.fps.last_updated >= 1) {
 		game.fps.last_updated = elapsed_t
 		game.fps.value = 1 / auto_cast delta_t
+	}
+
+	// Entity handling
+
+	if (elapsed_t - game.enemy_last_added > 2) { // creates new enemy
+		game.enemy_last_added = elapsed_t
+
+		spawn := game.spawn_point
+		pos := grid_to_coord(spawn) 
+
+		pos.x += f32(GRID_TILE.x) / 2.0
+		pos.y += f32(GRID_TILE.y) / 2.0
+		grid := spawn
+
+		dest_gp, _ := find_next(grid, {}, .path)
+		dest := grid_to_coord(dest_gp)
+		dest += GRID_TILE / 2.0
+
+
+		game.enemies[game.enemies_n] = Entity{
+			image_id = .enemy_right,
+			position = pos,
+			health = 1.0,
+			max_health = 1.0,
+			speed = 0.5,
+			next_destination = dest,
+		}
+		game.enemies_n += 1
+	}
+
+	for i:=0;i<game.enemies_n;i+=1 {
+		enemy := &game.enemies[i]
+		if enemy.image_id == .nil {
+			continue
+		}
+		direction := enemy.next_destination - enemy.position
+		grid := coord_to_grid(enemy.position)
+		if grid.x < 0 || grid.x >= GRID_W || grid.y < 0 || grid.y >= GRID_H {
+			game.enemies[i].image_id = .nil
+			continue
+		}
+		enemy.travel_map[grid.x][grid.y] = true
+
+		if (abs(direction.x) < 1 && abs(direction.y) < 1) || is_within_square(enemy.position, enemy.next_destination, v2{20, 20}) {
+			dest_gp, path_exists := find_next(grid, enemy.travel_map, .path)
+			if !path_exists {
+				dest_gp, _ = find_next(grid, enemy.travel_map, .finish)
+				dest := grid_to_coord(dest_gp)
+				dest += GRID_TILE / 2
+				new_direction := dest - enemy.position
+				dest += new_direction
+				enemy.next_destination = dest
+			} else {
+				dest := grid_to_coord(dest_gp)
+				dest += GRID_TILE / 2
+				enemy.next_destination = dest
+			}
+		}
+		v2_normalize(&direction)
+		enemy.position += direction * enemy.speed
 	}
 
 
@@ -179,14 +281,14 @@ tower_game_render :: proc "c" () {
 				tile := game.world[i][j]
 				pos := grid_to_coord(gp{i, j})
 				switch tile {
-					case .none:
-						color := hex_to_rgba(0x6a6997FF)
-						if (j % 2 == i % 2) {
-							color = hex_to_rgba(0x2c2851ff)
-						}
-						draw_rect(pos, GRID_TILE, color, img_id = Image_Id.tile)
-					case .path, .finish, .spawn:
-						draw_rect(pos, GRID_TILE, hex_to_rgba(0xac9098ff), img_id = Image_Id.tile)
+				case .none:
+					color := hex_to_rgba(0x6a6997FF)
+					if (j % 2 == i % 2) {
+						color = hex_to_rgba(0x2c2851ff)
+					}
+					draw_rect(pos, GRID_TILE, color, img_id = Image_Id.tile)
+				case .path, .finish, .spawn:
+					draw_rect(pos, GRID_TILE, hex_to_rgba(0xac9098ff), img_id = Image_Id.tile)
 
 				}
 			}
@@ -197,8 +299,13 @@ tower_game_render :: proc "c" () {
 		if grid.x >= 0 && grid.x < GRID_W && grid.y >= 0 && grid.y < GRID_H {
 			draw_rect(grid_to_coord(grid), GRID_TILE, COLOR_RED, img_id = Image_Id.tile)
 		}
-		
 
+		for i := 0; i < game.enemies_n; i += 1 {
+			entity := game.enemies[i]
+			img := images[entity.image_id]	
+			size := v2{f32(img.width), f32(img.height)}
+			draw_rect(entity.position - (size / 4),  size, COLOR_WHITE, img_id=entity.image_id)
+		}
 
 	}
 

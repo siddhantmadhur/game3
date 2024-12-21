@@ -94,6 +94,17 @@ Draw_Frame :: struct {
 
 draw_frame : Draw_Frame;
 
+v2_length :: proc (vec: Vector2) -> f32 {
+	return math.sqrt(math.pow(vec.x, 2) + math.pow(vec.y, 2))
+}
+
+v2_normalize :: proc (vec: ^Vector2) {
+	length := v2_length(vec^)
+	vec.x /= length
+	vec.y /= length
+}
+
+
 DEFAULT_UV :: v4{0, 0, 1, 1}
 Vector2i :: [2]int
 Vector2 :: [2]f32
@@ -369,14 +380,6 @@ draw_rect :: proc (
 
 
 // :Image stuff
-
-Image_Id :: enum {
-	nil,
-	housemd,
-	wilsonmd,
-	brick,
-	tile,
-}
 
 Image :: struct {
 	width, height: i32,

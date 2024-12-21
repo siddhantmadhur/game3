@@ -33,7 +33,7 @@ As of right now, the only examples are `pong` and `house`
 4. NOTE: This only needs to be done whenever the quad_shader.glsl file is modified
    Run the following command to compile the shaders:
    ```
-   ./sokol-shdc -i src/quad_shader.glsl -o src/quad_shader.shader.odin --slang glsl430:hlsl5:metal_macos
+   ./sokol-shdc -i src/quad_shader.glsl -o src/quad_shader.shader.odin --slang glsl430:hlsl5:metal_macos -f sokol_odin
    ```
 5. You can now compile or run this like a regular Odin project
    ```
