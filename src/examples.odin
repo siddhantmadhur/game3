@@ -75,8 +75,15 @@ PongPlayer :: struct {
 	yaxis: f32 // 0.0 -> 1.0 on the vertical range
 }
 
-pong_game : struct {
-	player1: PongPlayer
+PongBall :: struct {
+	position: Vector2,
+	direction: Vector2,
+	speed: f32,
+}
+
+pong_state : struct {
+	player1: PongPlayer,
+	ball: PongBall,
 }
 
 example_pong_bg_color :: 0x0
@@ -89,14 +96,14 @@ example_pong_event :: proc "c" (event: ^sapp.Event) {
 	#partial switch event.type {
 		case .KEY_DOWN:
 			if event.key_code == sapp.Keycode.UP {
-				pong_game.player1.yaxis += speed * auto_cast delta_t
-				if (pong_game.player1.yaxis > 1.0) {
-					pong_game.player1.yaxis = 1 
+				pong_state.player1.yaxis += speed * auto_cast delta_t
+				if (pong_state.player1.yaxis > 1.0) {
+					pong_state.player1.yaxis = 1 
 				}
 			} else if event.key_code == sapp.Keycode.DOWN {
-				pong_game.player1.yaxis -= speed * auto_cast delta_t
-				if (pong_game.player1.yaxis < 0.0) {
-					pong_game.player1.yaxis = 0 
+				pong_state.player1.yaxis -= speed * auto_cast delta_t
+				if (pong_state.player1.yaxis < 0.0) {
+					pong_state.player1.yaxis = 0 
 				}
 
 			}
@@ -104,8 +111,12 @@ example_pong_event :: proc "c" (event: ^sapp.Event) {
 }
 
 example_pong_init :: proc () {
-	//pong_game.player1 = PongPlayer{yaxis=0.5}	
-	pong_game.player1.yaxis = 0.5 
+	//pong_state.player1 = PongPlayer{yaxis=0.5}	
+	pong_state.player1.yaxis = 0.5 
+
+	pong_state.ball.position = v2 {0, 0}
+	pong_state.ball.direction = v2 {-1, 0.2}
+	pong_state.ball.speed = 1.0 
 
 }
 
@@ -116,7 +127,27 @@ example_pong_render :: proc "c" () {
 	draw_frame.camera_xform = Matrix4(1)
 	//draw_frame.camera_xform *= 0.1
 
-	draw_rect(v2{-(auto_cast global.window_w / 2) +20, ((pong_game.player1.yaxis - 0.5) * (auto_cast global.window_h - 150)) + 50}, v2{20, 100}, COLOR_WHITE)
+	// :Player movement
 
+	player_position := v2{-(auto_cast global.window_w / 2) +20, ((pong_state.player1.yaxis - 0.5) * (auto_cast global.window_h - 150)) + 50}
+
+	// :Ball movement
+	pong_state.ball.position = pong_state.ball.position + pong_state.ball.direction
+
+
+	// :FPS
+	fps := 1 / delta_t 
+	tl := v2{auto_cast global.window_w / -2.0, auto_cast global.window_h / 2}
+	tl.x += 10
+	tl.y -= 10
+
+
+
+	// :Render
+	draw_text(tl, fmt.tprintf("FPS: %0.0f", fps), 1.0, .top_left)
+
+	draw_rect(player_position, v2{20, 100}, COLOR_WHITE)
+
+	draw_rect(pong_state.ball.position, v2{20, 20})
 
 }

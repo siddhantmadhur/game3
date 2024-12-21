@@ -134,7 +134,7 @@ scale_from_pivot :: proc(pivot: Pivot) -> Vector2 {
 //
 // :FONT
 //
-draw_text :: proc(pos: Vector2, text: string, scale:= 1.0) {
+draw_text :: proc(pos: Vector2, text: string, scale:= 1.0, pivot: Pivot = Pivot.top_left) {
 	using stbtt
 	
 	x: f32
@@ -156,9 +156,17 @@ draw_text :: proc(pos: Vector2, text: string, scale:= 1.0) {
 		bottom_left := v2{ q.x0, -q.y1 }
 		top_right := v2{ q.x1, -q.y0 }
 		assert(bottom_left + size == top_right)
-
+		
 		bottom_left.y += size.y
 		top_right.y += size.y
+
+		#partial switch(pivot) {
+			case .bottom_left:
+			case .top_left:
+				bottom_left.y -= 15
+				top_right.y -= 15
+					
+		}
 		
 		offset_to_render_at := v2{x,y} + bottom_left
 		
