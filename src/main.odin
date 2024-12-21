@@ -61,6 +61,15 @@ hex_to_rgba :: proc (hex_cl: int) -> [4]f32 {
 	return Vector4{colors[0], colors[1], colors[2], colors[3]}
 }
 
+is_within_square :: proc (pos: Vector2, obj_pos: Vector2, obj_size: Vector2) -> bool {
+	is_below_y := obj_pos.y <= pos.y;
+	is_above_y := (obj_pos.y + obj_size.y) >= pos.y;
+	is_left_x := (obj_pos.x) <= pos.x;
+	is_right_x := (obj_pos.x + obj_size.x) >= pos.x;
+
+	return (is_below_y && is_above_y && is_left_x && is_right_x);
+}
+
 Vertex :: struct {
 	pos: Vector2,
 	color: Vector4,
@@ -193,8 +202,8 @@ draw_text :: proc(pos: Vector2, text: string,  scale_d:= 1.0, pivot:=Pivot.botto
 		top_right := v2{ q.x1, -q.y0 }
 		assert(bottom_left + size == top_right)
 		
-		bottom_left.y += size.y 
-		top_right.y += size.y 
+		//bottom_left.y += size.y 
+		//top_right.y += size.y 
 		
 		offset_to_render_at := v2{x,y} + bottom_left
 		
@@ -319,10 +328,10 @@ draw_rect_projected :: proc (
 	img_id: Image_Id=.nil,
 ) {
 
-	bl := v2{0, -size.y}
-	tl := v2{0, 0}
-	tr := v2{size.x, 0}
-	br := v2{size.x, -size.y}
+	bl := v2{ 0, 0 }
+	tl := v2{ 0, size.y }
+	tr := v2{ size.x, size.y }
+	br := v2{ size.x, 0 }
 
 	uv0 := uv
 	if uv == DEFAULT_UV {

@@ -28,22 +28,28 @@ Screens :: enum {
 
 game: struct {
 	fps:           FPS,
-	display_stats: bool,
+	debug: bool,
 	screen: Screens,
+	mouse_pos_screen: v2,
+	mouse_pos: v2,
+	camera_pos: v2,
 }
 
+
+current_event : enum {
+	none,
+	create_new_game,
+}
 
 
 // Runs once
 tower_game_init :: proc() {
+	current_event = .none
 	game.screen = .main_menu
 	game.fps.value = 0
 	game.fps.last_updated = elapsed_t
-	when ODIN_DEBUG {
-		game.display_stats = true
-	} else {
-		game.display_stats = false
-	}
+	game.debug = ODIN_DEBUG
+	game.camera_pos = v2{0, 0}
 
 }
 
@@ -51,6 +57,8 @@ tower_game_init :: proc() {
 // Runs every frame
 tower_game_render :: proc "c" () {
 	context = runtime.default_context()
+	sapp.set_mouse_cursor(.DEFAULT)
+	current_event = .none
 
 
 	// SET PROJECTION AND/OR CAMERA ZOOM
@@ -78,12 +86,28 @@ tower_game_render :: proc "c" () {
 			cursor := v2{0, auto_cast global.window_h / 2}
 			cursor.y -= 100
 			draw_text(cursor, "Tower Defense", 2, .top_center, hex_to_rgba(color_text))
+			cursor.y -= 200
+			size := draw_text(cursor, "New Game", 1.2, .top_center, hex_to_rgba(color_text))
+
+			box := cursor 
+			box -= size * scale_from_pivot(.top_center)
+			if game.debug {
+				draw_rect(box, size, v4{COLOR_RED.x, COLOR_RED.y, COLOR_RED.z, 0.5})
+			}
+
+			if is_within_square(game.mouse_pos, box, size) {
+				sapp.set_mouse_cursor(.POINTING_HAND)
+				current_event = .create_new_game
+			}
+
+			//draw_rect(cursor + pivot_offset, pos, v4{COLOR_RED.x, COLOR_RED.y, COLOR_RED.z, 0.5})
+
 		case .game:
 	}
 
 
 	// Render debug stats
-	if game.display_stats {
+	if game.debug {
 		tl := v2{auto_cast global.window_w / -2.0, auto_cast global.window_h / 2.0}
 		tl += v2{10, -10}
 		draw_text(
@@ -105,9 +129,22 @@ tower_game_event :: proc "c" (event: ^sapp.Event) {
 			fmt.printfln("Quitting game...")
 			sapp.quit()
 		case .F3:
-			game.display_stats = !game.display_stats
+			game.debug = !game.debug
 		}
+		case .MOUSE_MOVE:
+			game.mouse_pos_screen = v2{event.mouse_x, event.mouse_y}
+			camera_offset := game.camera_pos - (v2{f32(global.window_w), f32(global.window_h)} * 0.5)
 
+			game.mouse_pos = game.mouse_pos_screen + camera_offset 
+			game.mouse_pos.y *= -1
+
+		case .MOUSE_DOWN:
+			switch current_event {
+				case .create_new_game:
+					fmt.printfln("Creating new game...")
+				case .none:
+
+			}
 	}
 
 }
