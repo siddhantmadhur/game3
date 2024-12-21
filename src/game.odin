@@ -34,8 +34,16 @@ game: struct {
 	mouse_pos:        v2,
 	camera_pos:       v2,
 	camera_zoom:      f32,
+	world: [GRID_W][GRID_W]TileId,
 }
 
+
+TileId :: enum {
+	none,
+	path,
+	spawn,
+	finish
+}
 
 current_event: enum {
 	none,
@@ -58,6 +66,18 @@ tower_game_init :: proc() {
 	game.debug = ODIN_DEBUG
 	game.camera_pos = v2{0, 0}
 	game.camera_zoom = 1
+
+	game.world = [GRID_W][GRID_H]TileId{
+		{.none, .spawn, .none, .none, .none, .none, .none, .none},
+		{.none, .path, .none, .none, .none, .none, .none, .none},
+		{.none, .path, .none, .none, .none, .none, .none, .none},
+		{.none, .path, .path, .path, .path, .none, .none, .none},
+		{.none, .none, .none, .none, .path, .none, .none, .none},
+		{.none, .none, .none, .none, .path, .none, .none, .none},
+		{.none, .none, .none, .none, .path, .none, .none, .none},
+		{.none, .none, .none, .none, .finish, .none, .none, .none},
+	}
+
 
 }
 
@@ -156,18 +176,25 @@ tower_game_render :: proc "c" () {
 
 		for i := 0; i < GRID_W; i += 1 {
 			for j := 0; j < GRID_H; j += 1 {
-				color := hex_to_rgba(0x6a6997FF)
-				if (j % 2 == i % 2) {
-					color = hex_to_rgba(0x2c2851ff)
-				}
+				tile := game.world[i][j]
 				pos := grid_to_coord(gp{i, j})
-				draw_rect(pos, GRID_TILE, color, img_id = Image_Id.tile)
+				switch tile {
+					case .none:
+						color := hex_to_rgba(0x6a6997FF)
+						if (j % 2 == i % 2) {
+							color = hex_to_rgba(0x2c2851ff)
+						}
+						draw_rect(pos, GRID_TILE, color, img_id = Image_Id.tile)
+					case .path, .finish, .spawn:
+						draw_rect(pos, GRID_TILE, hex_to_rgba(0xac9098ff), img_id = Image_Id.tile)
+
+				}
 			}
 		}
 
 		grid := coord_to_grid(game.mouse_pos)
 
-		if grid.x >= 0 && grid.x < GRID_W && grid.y >= 0 && grid.x < GRID_H {
+		if grid.x >= 0 && grid.x < GRID_W && grid.y >= 0 && grid.y < GRID_H {
 			draw_rect(grid_to_coord(grid), GRID_TILE, COLOR_RED, img_id = Image_Id.tile)
 		}
 		
