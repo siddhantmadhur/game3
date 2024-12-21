@@ -37,7 +37,11 @@ state: struct {
 	pass_action: sg.Pass_Action,
 }
 
-hex_to_rgba :: proc (hex_cl: int) -> sg.Color {
+vec_to_col :: proc (colors: [4]f32) -> sg.Color {
+	return sg.Color{colors[0], colors[1], colors[2], colors[3]}
+}
+
+hex_to_rgba :: proc (hex_cl: int) -> [4]f32 {
 	hex := hex_cl
 	colors: [4]f32 
 
@@ -54,7 +58,7 @@ hex_to_rgba :: proc (hex_cl: int) -> sg.Color {
 		colors[3 - i] = (auto_cast color) / 255.0
 	}
 
-	return sg.Color{colors[0], colors[1], colors[2], colors[3]}
+	return Vector4{colors[0], colors[1], colors[2], colors[3]}
 }
 
 Vertex :: struct {
@@ -134,12 +138,45 @@ scale_from_pivot :: proc(pivot: Pivot) -> Vector2 {
 //
 // :FONT
 //
-draw_text :: proc(pos: Vector2, text: string, scale:= 1.0, pivot: Pivot = Pivot.top_left) {
+draw_text :: proc(pos: Vector2, text: string,  scale_d:= 1.0, pivot:=Pivot.bottom_left, color:=COLOR_WHITE) -> Vector2 {
 	using stbtt
+
+	scale := scale_d / 2.0
 	
+
+	// loop thru and find the text size box thingo
+	total_size : v2
+	for char, i in text {
+		
+		advance_x: f32
+		advance_y: f32
+		q: aligned_quad
+		GetBakedQuad(&font.char_data[0], font_bitmap_w, font_bitmap_h, cast(i32)char - 32, &advance_x, &advance_y, &q, false)
+		// this is the the data for the aligned_quad we're given, with y+ going down
+		// x0, y0,     s0, t0, // top-left
+		// x1, y1,     s1, t1, // bottom-right
+		
+		size := v2{ abs(q.x0 - q.x1), abs(q.y0 - q.y1) }
+		
+		bottom_left := v2{ q.x0, -q.y1 }
+		top_right := v2{ q.x1, -q.y0 }
+		assert(bottom_left + size == top_right)
+		
+		if i == len(text)-1 {
+			total_size.x += size.x
+		} else {
+			total_size.x += advance_x
+		}
+		
+		total_size.y = max(total_size.y, top_right.y)
+	}
+	
+	pivot_offset := total_size * -scale_from_pivot(pivot)
+	
+	
+	// draw glyphs one by one
 	x: f32
 	y: f32
-
 	for char in text {
 		
 		advance_x: f32
@@ -150,43 +187,38 @@ draw_text :: proc(pos: Vector2, text: string, scale:= 1.0, pivot: Pivot = Pivot.
 		// x0, y0,     s0, t0, // top-left
 		// x1, y1,     s1, t1, // bottom-right
 		
-		
 		size := v2{ abs(q.x0 - q.x1), abs(q.y0 - q.y1) }
 		
 		bottom_left := v2{ q.x0, -q.y1 }
 		top_right := v2{ q.x1, -q.y0 }
 		assert(bottom_left + size == top_right)
 		
-		bottom_left.y += size.y
-		top_right.y += size.y
-
-		#partial switch(pivot) {
-			case .bottom_left:
-			case .top_left:
-				bottom_left.y -= 15
-				top_right.y -= 15
-					
-		}
+		bottom_left.y += size.y 
+		top_right.y += size.y 
 		
 		offset_to_render_at := v2{x,y} + bottom_left
 		
+		offset_to_render_at += pivot_offset
+		
 		uv := v4{ q.s0, q.t1,
 							q.s1, q.t0 }
-		
+							
 		xform := Matrix4(1)
 		xform *= xform_translate(pos)
 		xform *= xform_scale(v2{auto_cast scale, auto_cast scale})
 		xform *= xform_translate(offset_to_render_at)
-		draw_rect_xform(xform, size, uv=uv, img_id=font.img_id)
+		
+		
+		draw_rect_xform(xform, size, uv=uv, img_id=font.img_id, col=color)
 		
 		x += advance_x
 		y += -advance_y
 	}
 
+	return total_size * f32(scale)
 }
-
-font_bitmap_w :: 256
-font_bitmap_h :: 256
+font_bitmap_w :: 256 * 2
+font_bitmap_h :: 256 * 2
 char_count :: 96
 Font :: struct {
 	char_data: [char_count]stbtt.bakedchar,
@@ -198,7 +230,7 @@ init_fonts :: proc() {
 	using stbtt
 	
 	bitmap, _ := mem.alloc(font_bitmap_w * font_bitmap_h)
-	font_height := 15 // for some reason this only bakes properly at 15 ? it's a 16px font dou...
+	font_height := 32 // for some reason this only bakes properly at 15 ? it's a 16px font dou...
 	path := "assets/fonts/PressStart2P-Regular.ttf"
 	ttf_data, err := os.read_entire_file(path)
 	assert(ttf_data != nil, "failed to read font")
@@ -334,6 +366,7 @@ Image_Id :: enum {
 	housemd,
 	wilsonmd,
 	brick,
+	tile,
 }
 
 Image :: struct {
@@ -541,7 +574,7 @@ init :: proc "c" () {
 
 	state.pass_action = {
 		colors = {
-			0 = { load_action = .CLEAR, clear_value = hex_to_rgba(bg_color) } }
+			0 = { load_action = .CLEAR, clear_value = vec_to_col(hex_to_rgba(bg_color)) } }
 	}
 
 
