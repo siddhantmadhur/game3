@@ -33,6 +33,7 @@ game: struct {
 	mouse_pos_screen: v2,
 	mouse_pos: v2,
 	camera_pos: v2,
+	camera_zoom: f32,
 }
 
 
@@ -50,6 +51,7 @@ tower_game_init :: proc() {
 	game.fps.last_updated = elapsed_t
 	game.debug = ODIN_DEBUG
 	game.camera_pos = v2{0, 0}
+	game.camera_zoom = 1
 
 }
 
@@ -71,7 +73,7 @@ tower_game_render :: proc "c" () {
 		1,
 	)
 	draw_frame.camera_xform = Matrix4(1)
-	//draw_frame.camera_xform *= 0.1
+	draw_frame.camera_xform *= auto_cast game.camera_zoom 
 
 	// :FPS
 	if (elapsed_t - game.fps.last_updated >= 1) {
@@ -103,6 +105,7 @@ tower_game_render :: proc "c" () {
 			//draw_rect(cursor + pivot_offset, pos, v4{COLOR_RED.x, COLOR_RED.y, COLOR_RED.z, 0.5})
 
 		case .game:
+			draw_rect(v2{0, 0}, v2{128, 64}, COLOR_WHITE, img_id=Image_Id.tile)
 	}
 
 
@@ -133,15 +136,18 @@ tower_game_event :: proc "c" (event: ^sapp.Event) {
 		}
 		case .MOUSE_MOVE:
 			game.mouse_pos_screen = v2{event.mouse_x, event.mouse_y}
-			camera_offset := game.camera_pos - (v2{f32(global.window_w), f32(global.window_h)} * 0.5)
+			camera_offset := game.camera_pos - (v2{f32(global.window_w), f32(global.window_h)} * 0.5 )
 
 			game.mouse_pos = game.mouse_pos_screen + camera_offset 
 			game.mouse_pos.y *= -1
+
+			game.mouse_pos /= game.camera_zoom
 
 		case .MOUSE_DOWN:
 			switch current_event {
 				case .create_new_game:
 					fmt.printfln("Creating new game...")
+					game.screen = .game
 				case .none:
 
 			}
