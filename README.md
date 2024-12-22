@@ -2,6 +2,8 @@
 
 Building a simple game engine in Odin using the Sokol library for handling graphics
 
+[Extremely basic entity rendering](https://github.com/user-attachments/assets/1d086fd7-97b4-415e-b293-48779809519b)
+
 ## Examples
 
 In the `define.odin` file you can modify the following variables to see different examples
