@@ -10,6 +10,7 @@ Image_Id :: enum {
 	tile,
 	enemy,
 	heart,
+	turret_small,
 }
 
 // Change this to whatever example needs to be rendered

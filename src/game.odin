@@ -323,7 +323,7 @@ tower_game_render :: proc "c" () {
 		tr := v2{f32(global.window_w) / 2.0, f32(global.window_h) / 2.0}	
 		tr -= v2{10, 10}
 
-		text_size := draw_text(tr, fmt.tprintf("%2.0f", game.player_health * 100), 1, .top_right, hex_to_rgba(color_text))
+		text_size := draw_text(tr, fmt.tprintf("%1.0f", game.player_health * 100), 1, .top_right, hex_to_rgba(color_text))
 		tr.x -= text_size.x + 5
 		tr.y -= text_size.y /2
 
