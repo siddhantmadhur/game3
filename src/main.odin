@@ -23,12 +23,14 @@ Settings :: struct {
 	window_w: i32,
 	window_h: i32,
 	title: cstring,
+	paused: bool,
 }
 
 global: Settings = {
 	window_w = 1280,
 	window_h = 720,
 	title = "game3",
+	paused = false
 }
 
 state: struct {
@@ -620,7 +622,7 @@ frame :: proc "c" () {
 	context = runtime.default_context()
 
 	// Delta time stuff
-	delta_t = time.duration_seconds(time.diff(last_time, time.now())) 
+	delta_t = time.duration_seconds(time.diff(last_time, time.now())) * (global.paused ? 0 : 1)
 	elapsed_t += delta_t
 	last_time = time.now()
 

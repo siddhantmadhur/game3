@@ -254,7 +254,7 @@ tower_game_render :: proc "c" () {
 			}
 		}
 		v2_normalize(&direction)
-		enemy.position += direction * enemy.speed
+		enemy.position += direction * enemy.speed * f32(delta_t) * 100
 	}
 
 
@@ -344,12 +344,14 @@ tower_game_render :: proc "c" () {
 	if game.debug {
 		tl := v2{auto_cast global.window_w / -2.0, auto_cast global.window_h / 2.0}
 		tl += v2{10, -10}
-		draw_text(
+		size := draw_text(
 			tl,
 			fmt.tprintf("FPS: %.0f", game.fps.value),
 			pivot = .top_left,
 			color = hex_to_rgba(color_text),
 		)
+		tl.y -= size.y
+		size = draw_text(tl, fmt.tprintf("Entities: %d", game.enemies_n), pivot = .top_left, color=hex_to_rgba(color_text))
 	}
 }
 
@@ -364,6 +366,8 @@ tower_game_event :: proc "c" (event: ^sapp.Event) {
 			sapp.quit()
 		case .F3:
 			game.debug = !game.debug
+		case .SPACE:
+			global.paused = !global.paused
 		}
 	case .MOUSE_MOVE:
 		game.mouse_pos_screen = v2{event.mouse_x, event.mouse_y}
