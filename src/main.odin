@@ -70,6 +70,19 @@ is_within_square :: proc (pos: Vector2, obj_pos: Vector2, obj_size: Vector2) -> 
 	return (is_below_y && is_above_y && is_left_x && is_right_x);
 }
 
+// Calculates the actual world coordinates in terms of relative screen position
+world_to_pos :: proc (world: Vector2) -> Vector2 {
+
+	camera_offset := game.camera_pos - (v2{f32(global.window_w), f32(global.window_h)} * 0.5)
+
+	pos := world + camera_offset
+	pos.y *= -1
+
+	pos.y /= game.camera_zoom
+
+	return pos
+}
+
 Vertex :: struct {
 	pos: Vector2,
 	color: Vector4,
@@ -406,7 +419,7 @@ init_images :: proc () {
 
 		path := tprint(img_dir, img_name, ".png", sep="")
 		png_data, succ := os.read_entire_file(path)
-		assert(succ)
+		assert(succ, fmt.tprintf("Could not read png file: %s\n", img_name))
 
 		stbi.set_flip_vertically_on_load(1)
 		width, height, channels: i32

@@ -26,10 +26,12 @@ Screens :: enum {
 	game,
 }
 
+// :GAME STATE
 game: struct {
 	fps:              FPS,
 	debug:            bool,
 	screen:           Screens,
+	player_health: f32, // 0.0 -> 1.0
 	mouse_pos_screen: v2,
 	mouse_pos:        v2,
 	camera_pos:       v2,
@@ -61,6 +63,8 @@ tower_game_init :: proc() {
 	current_event = .none
 	game.screen = .main_menu
 
+
+
 	when ODIN_DEBUG {
 		// TODO: Remove this  
 		game.screen = .game
@@ -88,6 +92,8 @@ tower_game_init :: proc() {
 
 	game.spawn_point = gp{0, 1}
 	game.finish_point = gp{7, 4}
+
+	game.player_health = 1.0
 
 }
 
@@ -208,7 +214,7 @@ tower_game_render :: proc "c" () {
 
 
 		game.enemies[game.enemies_n] = Entity{
-			image_id = .enemy_right,
+			image_id = .enemy,
 			position = pos,
 			health = 1.0,
 			max_health = 1.0,
@@ -227,6 +233,7 @@ tower_game_render :: proc "c" () {
 		grid := coord_to_grid(enemy.position)
 		if grid.x < 0 || grid.x >= GRID_W || grid.y < 0 || grid.y >= GRID_H {
 			game.enemies[i].image_id = .nil
+			game.player_health -= 0.2
 			continue
 		}
 		enemy.travel_map[grid.x][grid.y] = true
@@ -306,6 +313,29 @@ tower_game_render :: proc "c" () {
 			size := v2{f32(img.width), f32(img.height)}
 			draw_rect(entity.position - (size / 4),  size, COLOR_WHITE, img_id=entity.image_id)
 		}
+
+
+		// :UI
+
+		// Heart
+
+		tr_t := world_to_pos(v2{f32(global.window_w), f32(global.window_h)})
+		tr := v2{f32(global.window_w) / 2.0, f32(global.window_h) / 2.0}	
+		tr -= v2{10, 10}
+
+		text_size := draw_text(tr, fmt.tprintf("%2.0f", game.player_health * 100), 1, .top_right, hex_to_rgba(color_text))
+		tr.x -= text_size.x + 5
+		tr.y -= text_size.y /2
+
+		heart := images[Image_Id.heart]
+		size := v2{2, 2} * v2{f32(heart.width), f32(heart.height)}
+		offset_to_render :=  size * -scale_from_pivot(.center_right)
+
+		
+
+		draw_rect(tr + offset_to_render, size, img_id=Image_Id.heart)
+
+
 
 	}
 

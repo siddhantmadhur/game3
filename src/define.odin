@@ -8,7 +8,8 @@ Image_Id :: enum {
 	wilsonmd,
 	brick,
 	tile,
-	enemy_right
+	enemy,
+	heart,
 }
 
 // Change this to whatever example needs to be rendered
