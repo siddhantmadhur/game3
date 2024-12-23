@@ -26,12 +26,14 @@ Screens :: enum {
 	game,
 }
 
+g := &global
+
 // :GAME STATE
 game: struct {
 	fps:              FPS,
 	debug:            bool,
 	screen:           Screens,
-	player_health: f32, // 0.0 -> 1.0
+	player_health:    f32, // 0.0 -> 1.0
 	mouse_pos_screen: v2,
 	mouse_pos:        v2,
 	camera_pos:       v2,
@@ -39,8 +41,8 @@ game: struct {
 	world:            [GRID_W][GRID_W]TileId,
 	spawn_point:      GridPos,
 	finish_point:     GridPos,
-	enemies: 		  [128]Entity,
-	enemies_n: 		  int,
+	enemies:          [128]Entity,
+	enemies_n:        int,
 	enemy_last_added: f64,
 }
 
@@ -62,7 +64,6 @@ current_event: enum {
 tower_game_init :: proc() {
 	current_event = .none
 	game.screen = .main_menu
-
 
 
 	when ODIN_DEBUG {
@@ -138,35 +139,46 @@ grid_to_coord :: proc(grid: GridPos) -> Vector2 {
 
 
 Entity :: struct {
-	image_id: Image_Id,
-	position: Vector2,
-	travel_map: [GRID_W][GRID_H]bool,
+	image_id:         Image_Id,
+	position:         Vector2,
+	travel_map:       [GRID_W][GRID_H]bool,
 	next_destination: Vector2,
-	speed: f32,
-	health: f32,
-	max_health: f32,
+	speed:            f32,
+	health:           f32,
+	max_health:       f32,
 }
 
-find_next :: proc (
+find_next :: proc(
 	grid: GridPos,
 	travel_map: [GRID_W][GRID_H]bool,
-	tile_id: TileId
-) -> (GridPos, bool) {
+	tile_id: TileId,
+) -> (
+	GridPos,
+	bool,
+) {
 	dest := gp{0, 0}
 	found := false
-	if grid.x < GRID_W-1 && travel_map[grid.x+1][grid.y] == false && game.world[grid.x+1][grid.y] == tile_id {
-		dest = gp{grid.x+1, grid.y}
+	if grid.x < GRID_W - 1 &&
+	   travel_map[grid.x + 1][grid.y] == false &&
+	   game.world[grid.x + 1][grid.y] == tile_id {
+		dest = gp{grid.x + 1, grid.y}
 		found = true
-	} else if grid.x > 0 && travel_map[grid.x-1][grid.y] == false && game.world[grid.x-1][grid.y] == tile_id {
-		dest = gp{grid.x-1, grid.y}
+	} else if grid.x > 0 &&
+	   travel_map[grid.x - 1][grid.y] == false &&
+	   game.world[grid.x - 1][grid.y] == tile_id {
+		dest = gp{grid.x - 1, grid.y}
 		found = true
-	} else if grid.y < GRID_H -1 && travel_map[grid.x][grid.y+1] == false && game.world[grid.x][grid.y + 1] == tile_id {
+	} else if grid.y < GRID_H - 1 &&
+	   travel_map[grid.x][grid.y + 1] == false &&
+	   game.world[grid.x][grid.y + 1] == tile_id {
 		dest = gp{grid.x, grid.y + 1}
 		found = true
-	} else if grid.y > 0 && travel_map[grid.x][grid.y-1] == false && game.world[grid.x][grid.y - 1] == tile_id {
+	} else if grid.y > 0 &&
+	   travel_map[grid.x][grid.y - 1] == false &&
+	   game.world[grid.x][grid.y - 1] == tile_id {
 		dest = gp{grid.x, grid.y - 1}
 		found = true
-	} 
+	}
 	return dest, found
 
 }
@@ -177,6 +189,7 @@ tower_game_render :: proc "c" () {
 	sapp.set_mouse_cursor(.DEFAULT)
 	current_event = .none
 
+	tower_game_event()
 
 	// SET PROJECTION AND/OR CAMERA ZOOM
 	draw_frame.projection = linalg.matrix_ortho3d_f32(
@@ -188,7 +201,11 @@ tower_game_render :: proc "c" () {
 		1,
 	)
 	draw_frame.camera_xform = Matrix4(1)
-	draw_frame.camera_xform *= auto_cast game.camera_zoom
+	draw_frame.camera_xform =
+		draw_frame.camera_xform *
+		linalg.matrix4_translate(v3{game.camera_pos.x, game.camera_pos.y, 0})
+	draw_frame.camera_xform =
+		draw_frame.camera_xform * linalg.matrix4_scale(v3{game.camera_zoom, game.camera_zoom, 1})
 
 	// :FPS
 	if (elapsed_t - game.fps.last_updated >= 1) {
@@ -198,11 +215,11 @@ tower_game_render :: proc "c" () {
 
 	// Entity handling
 
-	if (elapsed_t - game.enemy_last_added > 2) { // creates new enemy
+	if (elapsed_t - game.enemy_last_added > 2) { 	// creates new enemy
 		game.enemy_last_added = elapsed_t
 
 		spawn := game.spawn_point
-		pos := grid_to_coord(spawn) 
+		pos := grid_to_coord(spawn)
 
 		pos.x += f32(GRID_TILE.x) / 2.0
 		pos.y += f32(GRID_TILE.y) / 2.0
@@ -213,18 +230,18 @@ tower_game_render :: proc "c" () {
 		dest += GRID_TILE / 2.0
 
 
-		game.enemies[game.enemies_n] = Entity{
-			image_id = .enemy,
-			position = pos,
-			health = 1.0,
-			max_health = 1.0,
-			speed = 0.5,
+		game.enemies[game.enemies_n] = Entity {
+			image_id         = .enemy,
+			position         = pos,
+			health           = 1.0,
+			max_health       = 1.0,
+			speed            = 0.5,
 			next_destination = dest,
 		}
 		game.enemies_n += 1
 	}
 
-	for i:=0;i<game.enemies_n;i+=1 {
+	for i := 0; i < game.enemies_n; i += 1 {
 		enemy := &game.enemies[i]
 		if enemy.image_id == .nil {
 			continue
@@ -238,7 +255,8 @@ tower_game_render :: proc "c" () {
 		}
 		enemy.travel_map[grid.x][grid.y] = true
 
-		if (abs(direction.x) < 1 && abs(direction.y) < 1) || is_within_square(enemy.position, enemy.next_destination, v2{20, 20}) {
+		if (abs(direction.x) < 1 && abs(direction.y) < 1) ||
+		   is_within_square(enemy.position, enemy.next_destination, v2{20, 20}) {
 			dest_gp, path_exists := find_next(grid, enemy.travel_map, .path)
 			if !path_exists {
 				dest_gp, _ = find_next(grid, enemy.travel_map, .finish)
@@ -309,9 +327,9 @@ tower_game_render :: proc "c" () {
 
 		for i := 0; i < game.enemies_n; i += 1 {
 			entity := game.enemies[i]
-			img := images[entity.image_id]	
+			img := images[entity.image_id]
 			size := v2{f32(img.width), f32(img.height)}
-			draw_rect(entity.position - (size / 4),  size, COLOR_WHITE, img_id=entity.image_id)
+			draw_rect(entity.position - (size / 4), size, COLOR_WHITE, img_id = entity.image_id)
 		}
 
 
@@ -320,21 +338,25 @@ tower_game_render :: proc "c" () {
 		// Heart
 
 		tr_t := world_to_pos(v2{f32(global.window_w), f32(global.window_h)})
-		tr := v2{f32(global.window_w) / 2.0, f32(global.window_h) / 2.0}	
+		tr := v2{f32(global.window_w) / 2.0, f32(global.window_h) / 2.0}
 		tr -= v2{10, 10}
 
-		text_size := draw_text(tr, fmt.tprintf("%1.0f", game.player_health * 100), 1, .top_right, hex_to_rgba(color_text))
+		text_size := draw_text(
+			tr,
+			fmt.tprintf("%1.0f", game.player_health * 100),
+			1,
+			.top_right,
+			hex_to_rgba(color_text),
+		)
 		tr.x -= text_size.x + 5
-		tr.y -= text_size.y /2
+		tr.y -= text_size.y / 2
 
 		heart := images[Image_Id.heart]
 		size := v2{2, 2} * v2{f32(heart.width), f32(heart.height)}
-		offset_to_render :=  size * -scale_from_pivot(.center_right)
+		offset_to_render := size * -scale_from_pivot(.center_right)
 
-		
 
-		draw_rect(tr + offset_to_render, size, img_id=Image_Id.heart)
-
+		draw_rect(tr + offset_to_render, size, img_id = Image_Id.heart)
 
 
 	}
@@ -342,6 +364,7 @@ tower_game_render :: proc "c" () {
 
 	// Render debug stats
 	if game.debug {
+		debug_scale := 0.75 
 		tl := v2{auto_cast global.window_w / -2.0, auto_cast global.window_h / 2.0}
 		tl += v2{10, -10}
 		size := draw_text(
@@ -349,36 +372,104 @@ tower_game_render :: proc "c" () {
 			fmt.tprintf("FPS: %.0f", game.fps.value),
 			pivot = .top_left,
 			color = hex_to_rgba(color_text),
+			scale_d=debug_scale,
 		)
 		tl.y -= size.y
-		size = draw_text(tl, fmt.tprintf("Entities: %d", game.enemies_n), pivot = .top_left, color=hex_to_rgba(color_text))
+		size = draw_text(
+			tl,
+			fmt.tprintf("Entities: %d", game.enemies_n),
+			pivot = .top_left,
+			color = hex_to_rgba(color_text),
+			scale_d=debug_scale,
+		)
+		tl.y -= size.y
+		size = draw_text(
+			tl,
+			fmt.tprintf("Mouse [Screen]: (%f, %f)", game.mouse_pos_screen, game.mouse_pos_screen),
+			pivot = .top_left,
+			color = hex_to_rgba(color_text),
+			scale_d=debug_scale,
+		)
+		tl.y -= size.y
+		size = draw_text(
+			tl,
+			fmt.tprintf("Mouse [World]: (%f, %f)", game.mouse_pos, game.mouse_pos),
+			pivot = .top_left,
+			color = hex_to_rgba(color_text),
+			scale_d=debug_scale,
+		)
 	}
+
+
 }
 
-tower_game_event :: proc "c" (event: ^sapp.Event) {
+tower_game_event :: proc "c" () {
 	context = runtime.default_context()
 
-	#partial switch event.type {
-	case .KEY_DOWN:
-		#partial switch event.key_code {
-		case .ESCAPE:
-			fmt.printfln("Quitting game...")
-			sapp.quit()
-		case .F3:
-			game.debug = !game.debug
-		case .SPACE:
-			global.paused = !global.paused
-		}
-	case .MOUSE_MOVE:
-		game.mouse_pos_screen = v2{event.mouse_x, event.mouse_y}
-		camera_offset := game.camera_pos - (v2{f32(global.window_w), f32(global.window_h)} * 0.5)
+	/**
+	if g.keyboard.events_n < 255 {
+		g.keyboard.events[g.keyboard.events_n] = event
+		g.keyboard.events_n += 1
+	}
+	**/
 
-		game.mouse_pos = game.mouse_pos_screen + camera_offset
-		game.mouse_pos.y *= -1
+	cam_axis := v2{0, 0}
 
-		game.mouse_pos /= game.camera_zoom
+	if key_down(.W) {
+		cam_axis.y -= 1.0
+	}
+	if key_down(.A) {
+		cam_axis.x += 1.0
+	}
+	if key_down(.S) {
+		cam_axis.y += 1.0
+	}
+	if key_down(.D) {
+		cam_axis.x -= 1.0
+	}
+	v2_normalize(&cam_axis)
+	game.camera_pos += cam_axis * f32(delta_t) * 800 * game.camera_zoom
 
-	case .MOUSE_DOWN:
+	if key_just_pressed(.SPACE) {
+		global.paused = !global.paused
+	}
+
+	if key_just_pressed(.P) {
+		fmt.printfln("Just pressed p")
+	}
+
+	if key_just_pressed(.F3) {
+		game.debug = !game.debug
+	}
+
+	if key_just_pressed(.ESCAPE) {
+		fmt.printfln("Quitting game...")
+		sapp.quit()
+	}
+
+
+
+	if cam_axis.x != 0 || cam_axis.y != 0 {
+		fmt.printfln("Mouse: %f, %f", cam_axis.x, cam_axis.y)
+	}
+
+
+	game.mouse_pos_screen = global.input_state.mouse
+	game.mouse_pos = screen_to_world(global.input_state.mouse)
+
+	dir := global.input_state.scroll.y
+	game.camera_zoom += dir * f32(delta_t) * 50
+
+	MAX_ZOOM :: 0.5
+	MIN_ZOOM :: 2.3
+
+	if game.camera_zoom < MAX_ZOOM {
+		game.camera_zoom = MAX_ZOOM 
+	} else if game.camera_zoom > MIN_ZOOM {
+		game.camera_zoom = MIN_ZOOM 
+	}
+
+	if global.input_state.mouse_button == .LEFT {
 		switch current_event {
 		case .create_new_game:
 			fmt.printfln("Creating new game...")
@@ -386,6 +477,7 @@ tower_game_event :: proc "c" (event: ^sapp.Event) {
 		case .none:
 
 		}
+
 	}
 
 }
