@@ -337,22 +337,25 @@ tower_game_render :: proc "c" () {
 
 		// Heart
 
-		tr_t := world_to_pos(v2{f32(global.window_w), f32(global.window_h)})
-		tr := v2{f32(global.window_w) / 2.0, f32(global.window_h) / 2.0}
-		tr -= v2{10, 10}
+		
+		tr := screen_to_world(v2{f32(global.window_w), f32(global.window_h)})
+		//tr := v2{f32(global.window_w) / 2.0, f32(global.window_h) / 2.0}
+		tr -= v2{10, 10} / game.camera_zoom
+		scale: f64= 1 / f64(game.camera_zoom) 
 
 		text_size := draw_text(
 			tr,
 			fmt.tprintf("%1.0f", game.player_health * 100),
-			1,
+			scale,
 			.top_right,
 			hex_to_rgba(color_text),
 		)
-		tr.x -= text_size.x + 5
+		tr.x -= text_size.x 
+		tr.x -= 10 * auto_cast scale
 		tr.y -= text_size.y / 2
 
 		heart := images[Image_Id.heart]
-		size := v2{2, 2} * v2{f32(heart.width), f32(heart.height)}
+		size := v2{2, 2} * v2{f32(heart.width), f32(heart.height)} * f32(scale)
 		offset_to_render := size * -scale_from_pivot(.center_right)
 
 
@@ -364,9 +367,10 @@ tower_game_render :: proc "c" () {
 
 	// Render debug stats
 	if game.debug {
-		debug_scale := 0.75 
-		tl := v2{auto_cast global.window_w / -2.0, auto_cast global.window_h / 2.0}
-		tl += v2{10, -10}
+		debug_scale:f64 = 0.75 / f64(game.camera_zoom) 
+		tl := v2{0, auto_cast global.window_h}
+		tl = screen_to_world(tl)
+		tl += v2{10, -10} / game.camera_zoom
 		size := draw_text(
 			tl,
 			fmt.tprintf("FPS: %.0f", game.fps.value),
@@ -428,7 +432,7 @@ tower_game_event :: proc "c" () {
 		cam_axis.x -= 1.0
 	}
 	v2_normalize(&cam_axis)
-	game.camera_pos += cam_axis * f32(delta_t) * 800 * game.camera_zoom
+	game.camera_pos += cam_axis * f32(delta_t) * 800 * (1/game.camera_zoom)
 
 	if key_just_pressed(.SPACE) {
 		global.paused = !global.paused
