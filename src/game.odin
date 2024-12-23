@@ -210,7 +210,7 @@ tower_game_render :: proc "c" () {
 	// :FPS
 	if (elapsed_t - game.fps.last_updated >= 1) {
 		game.fps.last_updated = elapsed_t
-		game.fps.value = 1 / auto_cast delta_t
+		game.fps.value = 1 / auto_cast delta_t()
 	}
 
 	// Entity handling
@@ -272,7 +272,7 @@ tower_game_render :: proc "c" () {
 			}
 		}
 		v2_normalize(&direction)
-		enemy.position += direction * enemy.speed * f32(delta_t) * 100
+		enemy.position += direction * enemy.speed * f32(delta_t()) * 100
 	}
 
 
@@ -443,7 +443,7 @@ tower_game_event :: proc "c" () {
 			cam_axis.x -= 1.0
 		}
 		v2_normalize(&cam_axis)
-		game.camera_pos += cam_axis * f32(delta_t) * 800 * (1 / game.camera_zoom)
+		game.camera_pos += cam_axis * f32(delta_t()) * 800 * (1 / game.camera_zoom)
 
 		if key_just_pressed(.SPACE) {
 			global.paused = !global.paused
@@ -463,7 +463,7 @@ tower_game_event :: proc "c" () {
 	game.mouse_pos = screen_to_world(global.input_state.mouse)
 
 	dir := global.input_state.scroll.y
-	game.camera_zoom += dir * f32(delta_t) * 50
+	game.camera_zoom += dir * f32(delta_t()) * 50
 
 	MAX_ZOOM :: 0.5
 	MIN_ZOOM :: 2.3

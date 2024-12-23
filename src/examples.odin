@@ -96,12 +96,12 @@ example_pong_event :: proc "c" (event: ^sapp.Event) {
 	#partial switch event.type {
 		case .KEY_DOWN:
 			if event.key_code == sapp.Keycode.UP {
-				pong_state.player1.yaxis += speed * auto_cast delta_t
+				pong_state.player1.yaxis += speed * auto_cast delta_t()
 				if (pong_state.player1.yaxis > 1.0) {
 					pong_state.player1.yaxis = 1 
 				}
 			} else if event.key_code == sapp.Keycode.DOWN {
-				pong_state.player1.yaxis -= speed * auto_cast delta_t
+				pong_state.player1.yaxis -= speed * auto_cast delta_t()
 				if (pong_state.player1.yaxis < 0.0) {
 					pong_state.player1.yaxis = 0 
 				}
@@ -136,7 +136,7 @@ example_pong_render :: proc "c" () {
 
 
 	// :FPS
-	fps := 1 / delta_t 
+	fps := 1 / delta_t()
 	tl := v2{auto_cast global.window_w / -2.0, auto_cast global.window_h / 2}
 	tl.x += 10
 	tl.y -= 10

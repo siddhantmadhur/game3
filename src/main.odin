@@ -717,7 +717,6 @@ init :: proc "c" () {
 
 }
 
-delta_t: f64 = 0
 elapsed_t: f64 = 0
 last_time: time.Time = time.now()
 
@@ -728,12 +727,13 @@ reset_render :: proc() {
 	draw_frame.quad_count = 0
 }
 
+delta_t :: sapp.frame_duration
+
 frame :: proc "c" () {
 	context = runtime.default_context()
 
 	// Delta time stuff
-	delta_t = time.duration_seconds(time.diff(last_time, time.now())) * (global.paused ? 0 : 1)
-	elapsed_t += delta_t
+	elapsed_t += delta_t()
 	last_time = time.now()
 
 	game_render()
