@@ -128,18 +128,18 @@ v2_normalize :: proc(vec: ^Vector2) {
 	}
 }
 
-screen_to_world :: proc (pos: Vector2) -> Vector2 {
-	
-	ndc_x := (pos.x / (f32(global.window_w) * 0.5)) - 1.0;
-	ndc_y := (pos.y / (f32(global.window_h) * 0.5)) - 1.0;
+screen_to_world :: proc(pos: Vector2) -> Vector2 {
+
+	ndc_x := (pos.x / (f32(global.window_w) * 0.5)) - 1.0
+	ndc_y := (pos.y / (f32(global.window_h) * 0.5)) - 1.0
 	//ndc_y *= -1
 
 	pos_world: v4 = v4{ndc_x, ndc_y, 0, 1}
 
 	pos_world *= linalg.inverse(draw_frame.projection)
-	pos_world = linalg.inverse(draw_frame.camera_xform) * pos_world 
+	pos_world = linalg.inverse(draw_frame.camera_xform) * pos_world
 
-	return pos_world.xy 
+	return pos_world.xy
 
 }
 
@@ -736,8 +736,8 @@ frame :: proc "c" () {
 	elapsed_t += delta_t
 	last_time = time.now()
 
-
 	game_render()
+
 
 	state.bind.images[IMG_tex0] = atlas.sg_image
 	state.bind.images[IMG_tex1] = images[font.img_id].sg_img
@@ -753,8 +753,10 @@ frame :: proc "c" () {
 	sg.end_pass()
 	sg.commit()
 
+
 	reset_render()
 	reset_events()
+
 }
 
 cleanup :: proc "c" () {
@@ -776,6 +778,18 @@ InputState :: struct {
 	mouse_button: sapp.Mousebutton,
 }
 
+map_sokol_mouse_button :: proc "c" (sokol_mouse_button: sapp.Mousebutton) -> sapp.Keycode {
+	#partial switch sokol_mouse_button {
+	case .LEFT:
+		return sapp.Keycode.LEFT
+	case .RIGHT:
+		return sapp.Keycode.RIGHT
+	case .MIDDLE:
+		return sapp.Keycode.UP
+	}
+	return nil
+}
+
 handle_events :: proc "c" (event: ^sapp.Event) {
 	inp_state := &global.input_state
 
@@ -795,7 +809,7 @@ handle_events :: proc "c" (event: ^sapp.Event) {
 			inp_state.keys[event.key_code] += {.down, .just_pressed}
 		}
 		if event.key_repeat {
-			inp_state.keys[event.key_code] += { .repeat }
+			inp_state.keys[event.key_code] += {.repeat}
 		}
 
 	case .KEY_UP:
@@ -803,9 +817,15 @@ handle_events :: proc "c" (event: ^sapp.Event) {
 			inp_state.keys[event.key_code] -= {.down}
 			inp_state.keys[event.key_code] += {.just_released}
 		}
+	case .MOUSE_UP:
+		if .down in inp_state.keys[map_sokol_mouse_button(event.mouse_button)] {
+			inp_state.keys[map_sokol_mouse_button(event.mouse_button)] -= {.down}
+			inp_state.keys[map_sokol_mouse_button(event.mouse_button)] += {.just_released}
+		}
 	case .MOUSE_DOWN:
-		inp_state.mouse_button = event.mouse_button
-
+		if !(.down in inp_state.keys[map_sokol_mouse_button(event.mouse_button)]) {
+			inp_state.keys[map_sokol_mouse_button(event.mouse_button)] += {.down, .just_pressed}
+		}
 	}
 }
 
@@ -819,7 +839,6 @@ key_down :: proc(code: sapp.Keycode) -> bool {
 }
 
 reset_events :: proc() {
-	global.input_state.mouse_button = .INVALID
 	global.input_state.scroll = v2{0, 0}
 	for &set in &global.input_state.keys {
 		set -= {.just_pressed, .just_released, .repeat}

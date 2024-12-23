@@ -187,9 +187,9 @@ find_next :: proc(
 tower_game_render :: proc "c" () {
 	context = runtime.default_context()
 	sapp.set_mouse_cursor(.DEFAULT)
-	current_event = .none
 
 	tower_game_event()
+	current_event = .none
 
 	// SET PROJECTION AND/OR CAMERA ZOOM
 	draw_frame.projection = linalg.matrix_ortho3d_f32(
@@ -337,11 +337,11 @@ tower_game_render :: proc "c" () {
 
 		// Heart
 
-		
+
 		tr := screen_to_world(v2{f32(global.window_w), f32(global.window_h)})
 		//tr := v2{f32(global.window_w) / 2.0, f32(global.window_h) / 2.0}
 		tr -= v2{10, 10} / game.camera_zoom
-		scale: f64= 1 / f64(game.camera_zoom) 
+		scale: f64 = 1 / f64(game.camera_zoom)
 
 		text_size := draw_text(
 			tr,
@@ -350,7 +350,7 @@ tower_game_render :: proc "c" () {
 			.top_right,
 			hex_to_rgba(color_text),
 		)
-		tr.x -= text_size.x 
+		tr.x -= text_size.x
 		tr.x -= 10 * auto_cast scale
 		tr.y -= text_size.y / 2
 
@@ -367,7 +367,9 @@ tower_game_render :: proc "c" () {
 
 	// Render debug stats
 	if game.debug {
-		debug_scale:f64 = 0.75 / f64(game.camera_zoom) 
+		debug_scale: f64 = 0.75 / f64(game.camera_zoom)
+		//debug_color := hex_to_rgba(color_text)
+		debug_color := COLOR_RED
 		tl := v2{0, auto_cast global.window_h}
 		tl = screen_to_world(tl)
 		tl += v2{10, -10} / game.camera_zoom
@@ -375,32 +377,40 @@ tower_game_render :: proc "c" () {
 			tl,
 			fmt.tprintf("FPS: %.0f", game.fps.value),
 			pivot = .top_left,
-			color = hex_to_rgba(color_text),
-			scale_d=debug_scale,
+			color = debug_color,
+			scale_d = debug_scale,
+		)
+		tl.y -= size.y
+		size = draw_text(
+			tl,
+			fmt.tprintf("Time Elapsed: %.0fs", elapsed_t),
+			pivot = .top_left,
+			color = debug_color,
+			scale_d = debug_scale,
 		)
 		tl.y -= size.y
 		size = draw_text(
 			tl,
 			fmt.tprintf("Entities: %d", game.enemies_n),
 			pivot = .top_left,
-			color = hex_to_rgba(color_text),
-			scale_d=debug_scale,
+			color = debug_color,
+			scale_d = debug_scale,
 		)
 		tl.y -= size.y
 		size = draw_text(
 			tl,
-			fmt.tprintf("Mouse [Screen]: (%f, %f)", game.mouse_pos_screen, game.mouse_pos_screen),
+			fmt.tprintf("Mouse [Screen]: %f", game.mouse_pos_screen),
 			pivot = .top_left,
-			color = hex_to_rgba(color_text),
-			scale_d=debug_scale,
+			color = debug_color,
+			scale_d = debug_scale,
 		)
 		tl.y -= size.y
 		size = draw_text(
 			tl,
-			fmt.tprintf("Mouse [World]: (%f, %f)", game.mouse_pos, game.mouse_pos),
+			fmt.tprintf("Mouse [World]: %f", game.mouse_pos),
 			pivot = .top_left,
-			color = hex_to_rgba(color_text),
-			scale_d=debug_scale,
+			color = debug_color,
+			scale_d = debug_scale,
 		)
 	}
 
@@ -417,29 +427,27 @@ tower_game_event :: proc "c" () {
 	}
 	**/
 
-	cam_axis := v2{0, 0}
+	if game.screen == .game {
+		cam_axis := v2{0, 0}
 
-	if key_down(.W) {
-		cam_axis.y -= 1.0
-	}
-	if key_down(.A) {
-		cam_axis.x += 1.0
-	}
-	if key_down(.S) {
-		cam_axis.y += 1.0
-	}
-	if key_down(.D) {
-		cam_axis.x -= 1.0
-	}
-	v2_normalize(&cam_axis)
-	game.camera_pos += cam_axis * f32(delta_t) * 800 * (1/game.camera_zoom)
+		if key_down(.W) {
+			cam_axis.y -= 1.0
+		}
+		if key_down(.A) {
+			cam_axis.x += 1.0
+		}
+		if key_down(.S) {
+			cam_axis.y += 1.0
+		}
+		if key_down(.D) {
+			cam_axis.x -= 1.0
+		}
+		v2_normalize(&cam_axis)
+		game.camera_pos += cam_axis * f32(delta_t) * 800 * (1 / game.camera_zoom)
 
-	if key_just_pressed(.SPACE) {
-		global.paused = !global.paused
-	}
-
-	if key_just_pressed(.P) {
-		fmt.printfln("Just pressed p")
+		if key_just_pressed(.SPACE) {
+			global.paused = !global.paused
+		}
 	}
 
 	if key_just_pressed(.F3) {
@@ -451,13 +459,6 @@ tower_game_event :: proc "c" () {
 		sapp.quit()
 	}
 
-
-
-	if cam_axis.x != 0 || cam_axis.y != 0 {
-		fmt.printfln("Mouse: %f, %f", cam_axis.x, cam_axis.y)
-	}
-
-
 	game.mouse_pos_screen = global.input_state.mouse
 	game.mouse_pos = screen_to_world(global.input_state.mouse)
 
@@ -468,12 +469,12 @@ tower_game_event :: proc "c" () {
 	MIN_ZOOM :: 2.3
 
 	if game.camera_zoom < MAX_ZOOM {
-		game.camera_zoom = MAX_ZOOM 
+		game.camera_zoom = MAX_ZOOM
 	} else if game.camera_zoom > MIN_ZOOM {
-		game.camera_zoom = MIN_ZOOM 
+		game.camera_zoom = MIN_ZOOM
 	}
 
-	if global.input_state.mouse_button == .LEFT {
+	if key_just_pressed(.LEFT) {
 		switch current_event {
 		case .create_new_game:
 			fmt.printfln("Creating new game...")
