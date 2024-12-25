@@ -324,7 +324,7 @@ init_fonts :: proc() {
 	font_height := 32 // for some reason this only bakes properly at 15 ? it's a 16px font dou...
 	path := "assets/fonts/PressStart2P-Regular.ttf"
 	ttf_data, ttf_size, err := read_entire_file(path)
-	defer mem.free(ptr)
+	defer mem.free(ttf_data)
 	assert(ttf_data != nil, "failed to read font")
 
 	ret := BakeFontBitmap(
@@ -500,16 +500,11 @@ import "core:strings"
 
 is_finished := false
 
-ptr: rawptr 
-ptr_l: uint
-	
 err := false
 
 fetch_callback :: proc "c" (response: ^sfetch.Response) {
 	context = runtime.default_context()
 	if response.fetched {
-		ptr = response.data.ptr
-		ptr_l = response.data.size
 		is_finished = true
 	} else if response.dispatched {
 		fmt.printfln("Fetching %s...", response.path)
@@ -548,7 +543,7 @@ read_entire_file :: proc (path: string) -> (rawptr, uint, bool) {
 	}
 
 
-	return ptr, ptr_l, err
+	return bffr, bffr_size, err
 }
 
 
@@ -567,7 +562,7 @@ init_images :: proc() {
 		path := tprint(img_dir, img_name, ".png", sep = "")
 		png_data, png_size, succ := read_entire_file(path)
 		assert(!succ, fmt.tprintf("Could not read png file: %s\n", img_name))
-		defer mem.free(ptr)
+		defer mem.free(png_data)
 
 		stbi.set_flip_vertically_on_load(1)
 		width, height, channels: i32
