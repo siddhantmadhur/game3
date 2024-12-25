@@ -504,30 +504,54 @@ image_count: int
 
 import "core:strings"
 
-is_finished := false
-
-err := false
 
 fetch_callback :: proc "c" (response: ^sfetch.Response) {
 	context = runtime.default_context()
+	user_data_cpy: ^ReadFileUserData = auto_cast response.user_data
+	user_data := user_data_cpy.self_ptr
 	if response.fetched {
-		is_finished = true
+		user_data.data_size = response.data.size
+		user_data.ptr = response.data.ptr
 	} else if response.dispatched {
 		fmt.printfln("Fetching %s...", response.path)
 	} else if response.failed {
 		fmt.printfln("Error fetching %s: code %d", response.path, response.error_code)
-		err := true
+		user_data.err = true
+		user_data.err_code = response.error_code
 	} else {
 		fmt.printfln("Something else with %s...", response.path)
-
 	}
+
+	if response.finished {
+		user_data.is_finished = true
+	}
+}
+
+ReadFileUserData :: struct {
+	ptr: rawptr,
+	data_size: uint,
+	is_finished: bool,
+	err: bool,
+	err_code: sfetch.Error,
+	self_ptr: ^ReadFileUserData,
 }
 read_entire_file :: proc(path: string) -> (rawptr, uint, bool) {
 
 	fmt.printfln("Reading %s...", path)
 
+	user_data := ReadFileUserData {
+		is_finished = false,
+		err = false,
+		data_size = 0,
+		err_code = .NO_ERROR,
+		ptr = nil,
+	}
+
+	user_data.self_ptr = &user_data
+
 	bffr_size: uint = size_of(u64) * 8192 * 8192
 	bffr, alloc_err := mem.alloc(auto_cast bffr_size)
+	assert(bffr != nil, "Did not allocate correctly")
 	if alloc_err != .None {
 		fmt.printfln("Allocate error")
 		return nil, 0, true
@@ -536,22 +560,24 @@ read_entire_file :: proc(path: string) -> (rawptr, uint, bool) {
 	}
 
 
-	is_finished = false
-	err = false
 	sfetch.send(
 		sfetch.Request {
 			path = strings.clone_to_cstring(path),
 			buffer = {ptr = bffr, size = bffr_size},
 			callback = fetch_callback,
+			user_data = {ptr = &user_data, size = size_of(ReadFileUserData)}
 		},
 	)
 
-	for !is_finished {
+	for ;!user_data.is_finished; {
 		sfetch.dowork()
 	}
 
+	data, _:= mem.alloc(auto_cast user_data.data_size)
+	mem.copy(data, user_data.ptr, auto_cast user_data.data_size)
+	mem.free(bffr)
 
-	return bffr, bffr_size, err
+	return data, user_data.data_size, user_data.err
 }
 
 
@@ -569,8 +595,8 @@ init_images :: proc() {
 
 		path := tprint(img_dir, img_name, ".png", sep = "")
 		png_data, png_size, succ := read_entire_file(path)
-		assert(!succ, fmt.tprintf("Could not read png file: %s\n", img_name))
 		defer mem.free(png_data)
+		assert(!succ, fmt.tprintf("Could not read png file: %s\n", img_name))
 
 		stbi.set_flip_vertically_on_load(1)
 		width, height, channels: i32
