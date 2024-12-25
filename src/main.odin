@@ -10,10 +10,14 @@ import "core:mem"
 import "core:time"
 
 import sapp "../sokol-odin/sokol/app"
+import sfetch "../sokol-odin/sokol/fetch"
 import sg "../sokol-odin/sokol/gfx"
 import sglue "../sokol-odin/sokol/glue"
 import slog "../sokol-odin/sokol/log"
-import sfetch "../sokol-odin/sokol/fetch"
+
+import imgui "../odin-imgui"
+//import ogl3 "../odin-imgui/imgui_impl_opengl3"
+import simgui "../sokol-odin/sokol/imgui"
 
 import stbi "vendor:stb/image"
 import stbrp "vendor:stb/rect_pack"
@@ -326,7 +330,8 @@ init_fonts :: proc() {
 	ttf_data, ttf_size, err := read_entire_file(path)
 	defer mem.free(ttf_data)
 	assert(ttf_data != nil, "failed to read font")
-
+	io := imgui.GetIO() 
+	imgui.FontAtlas_AddFontDefault(io.Fonts, )
 	ret := BakeFontBitmap(
 		auto_cast ttf_data,
 		0,
@@ -358,6 +363,7 @@ init_fonts :: proc() {
 		ptr  = bitmap,
 		size = auto_cast (font_bitmap_w * font_bitmap_h),
 	}
+
 	sg_img := sg.make_image(desc)
 	if sg_img.id == sg.INVALID_ID {
 		fmt.printfln("failed to make image")
@@ -516,12 +522,12 @@ fetch_callback :: proc "c" (response: ^sfetch.Response) {
 
 	}
 }
-read_entire_file :: proc (path: string) -> (rawptr, uint, bool) {
+read_entire_file :: proc(path: string) -> (rawptr, uint, bool) {
 
 	fmt.printfln("Reading %s...", path)
 
 	bffr_size: uint = size_of(u64) * 8192 * 8192
-	bffr, alloc_err:= mem.alloc(auto_cast bffr_size)
+	bffr, alloc_err := mem.alloc(auto_cast bffr_size)
 	if alloc_err != .None {
 		fmt.printfln("Allocate error")
 		return nil, 0, true
@@ -532,13 +538,15 @@ read_entire_file :: proc (path: string) -> (rawptr, uint, bool) {
 
 	is_finished = false
 	err = false
-	sfetch.send(sfetch.Request{
-		path = strings.clone_to_cstring(path),
-		buffer = {ptr = bffr, size=bffr_size},
-		callback=fetch_callback
-	})
+	sfetch.send(
+		sfetch.Request {
+			path = strings.clone_to_cstring(path),
+			buffer = {ptr = bffr, size = bffr_size},
+			callback = fetch_callback,
+		},
+	)
 
-	for ;!is_finished; {
+	for !is_finished {
 		sfetch.dowork()
 	}
 
@@ -690,37 +698,23 @@ init :: proc "c" () {
 
 	sg.setup({environment = sglue.environment(), logger = {func = slog.func}})
 
+	simgui.setup(simgui.Desc{logger = {func = slog.func}, no_default_font = true})
 
-	switch sg.query_backend() {
-	case .D3D11:
-		fmt.println(">> using D3D11 backend")
-	case .GLCORE, .GLES3:
-		fmt.println(">> using GL backend")
-	case .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR:
-		fmt.println(">> using Metal backend")
-	case .WGPU:
-		fmt.println(">> using WebGPU backend")
-	case .DUMMY:
-		fmt.println(">> using dummy backend")
-	}
 
-	sfetch.setup(sfetch.Desc{
-		max_requests = 64,
-		num_channels = 1,
-		num_lanes = 4,
-		logger = { func = slog.func }
-	})
+	sfetch.setup(
+		sfetch.Desc {
+			max_requests = 64,
+			num_channels = 1,
+			num_lanes = 4,
+			logger = {func = slog.func},
+		},
+	)
 
-	if !sfetch.valid() {
-		fmt.printfln("Sfetch not valid")
-	} else {
-		fmt.printfln("Sfetch initialized")
-
-	}
 
 	init_images()
 	init_fonts()
 	game_init()
+
 
 	state.bind.vertex_buffers[0] = sg.make_buffer(
 		{usage = .DYNAMIC, size = size_of(Quad) * len(draw_frame.quads)},
@@ -761,7 +755,8 @@ init :: proc "c" () {
 			},
 		},
 	}
-	blend_state: sg.Blend_State = {
+	//pipeline_desc.depth.pixel_format = .RGBA16F
+	blend_state := sg.Blend_State {
 		enabled          = true,
 		src_factor_rgb   = .SRC_ALPHA,
 		dst_factor_rgb   = .ONE_MINUS_SRC_ALPHA,
@@ -772,7 +767,16 @@ init :: proc "c" () {
 	}
 	pipeline_desc.colors[0] = {
 		blend = blend_state,
+		//pixel_format = .RGBA8,
 	}
+	/**
+	pipeline_desc.depth = {
+		write_enabled = true,
+		pixel_format  = .RGBA8,
+		compare = sg.Compare_Func.LESS_EQUAL
+	}
+		**/
+
 	state.pip = sg.make_pipeline(pipeline_desc)
 
 
@@ -802,20 +806,41 @@ frame :: proc "c" () {
 	elapsed_t += delta_t()
 	last_time = time.now()
 
+
+	simgui.new_frame(
+		simgui.Frame_Desc {
+			width = (global.window_w),
+			height = (global.window_h),
+			dpi_scale = sapp.dpi_scale(),
+			delta_time = sapp.frame_duration(),
+		},
+	)
+
 	game_render()
+
+	show := true
+	//imgui.ShowDemoWindow(&show)
+
+
 
 
 	state.bind.images[IMG_tex0] = atlas.sg_image
 	state.bind.images[IMG_tex1] = images[font.img_id].sg_img
 
+
 	sg.update_buffer(
 		state.bind.vertex_buffers[0],
 		{ptr = &draw_frame.quads[0], size = size_of(Quad) * len(draw_frame.quads)},
 	)
+	//ogl3.RenderDrawData()
 	sg.begin_pass({action = state.pass_action, swapchain = sglue.swapchain()})
+
+
 	sg.apply_pipeline(state.pip)
 	sg.apply_bindings(state.bind)
 	sg.draw(0, 6 * draw_frame.quad_count, 1)
+	simgui.render()
+
 	sg.end_pass()
 	sg.commit()
 

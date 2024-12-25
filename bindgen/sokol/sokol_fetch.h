@@ -347,14 +347,14 @@
     This pauses an active request in the next sfetch_dowork() call and puts
     it into the PAUSED state. For all requests in PAUSED state, the response
     callback will be called in each call to sfetch_dowork() to give user-code
-    a chance to CONTINUE the request (by calling sfetch_continue()). Pausing
+    a chance to CONTINUE the request (by calling sfetch_continue_t()). Pausing
     a request makes sense for dynamic rate-limiting in streaming scenarios
     (like video/audio streaming with a fixed number of streaming buffers. As
     soon as all available buffers are filled with download data, downloading
     more data must be prevented to allow video/audio playback to catch up and
     free up empty buffers for new download data.
 
-    void sfetch_continue(sfetch_handle_t request)
+    void sfetch_continue_t(sfetch_handle_t request)
     ---------------------------------------------
     Continues a paused request, counterpart to the sfetch_pause() function.
 
@@ -577,10 +577,10 @@
 
         While a request is in PAUSED state, the response-callback will be
         called in each sfetch_dowork(), so that the user-code can either
-        continue the request by calling sfetch_continue(), or cancel
+        continue the request by calling sfetch_continue_t(), or cancel
         the request by calling sfetch_cancel().
 
-        When calling sfetch_continue() on a paused request, the request will
+        When calling sfetch_continue_t() on a paused request, the request will
         transition into the FETCHING state. Otherwise if sfetch_cancel() is
         called, the request will switch into the FAILED state.
 
@@ -591,7 +591,7 @@
                     // we can check here whether the request should
                     // continue to load data:
                     if (should_continue(response->handle)) {
-                        sfetch_continue(response->handle);
+                        sfetch_continue_t(response->handle);
                     }
                 }
             }
@@ -1110,7 +1110,7 @@ SOKOL_FETCH_API_DECL void sfetch_cancel(sfetch_handle_t h);
 /* pause a request (will call response callback each frame with .paused) */
 SOKOL_FETCH_API_DECL void sfetch_pause(sfetch_handle_t h);
 /* continue a paused request */
-SOKOL_FETCH_API_DECL void sfetch_continue(sfetch_handle_t h);
+SOKOL_FETCH_API_DECL void sfetch_continue_t(sfetch_handle_t h);
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -2791,7 +2791,7 @@ SOKOL_API_IMPL void sfetch_pause(sfetch_handle_t h) {
     }
 }
 
-SOKOL_API_IMPL void sfetch_continue(sfetch_handle_t h) {
+SOKOL_API_IMPL void sfetch_continue_t(sfetch_handle_t h) {
     _sfetch_t* ctx = _sfetch_ctx();
     SOKOL_ASSERT(ctx && ctx->valid);
     _sfetch_item_t* item = _sfetch_pool_item_lookup(&ctx->pool, h.id);

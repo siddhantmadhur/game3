@@ -22,6 +22,7 @@ module_names = {
     'sshape_':  'shape',
     'sglue_':   'glue',
     'sfetch_':   'fetch',
+    'simgui_':   'imgui',
 }
 
 system_libs = {
@@ -78,6 +79,7 @@ c_source_names = {
     'sshape_':  'sokol_shape.c',
     'sglue_':   'sokol_glue.c',
     'sfetch_':   'sokol_fetch.c',
+    'simgui_':   'sokol_imgui.c',
 }
 
 ignores = [
@@ -547,6 +549,7 @@ tasks = [
     [ 'sokol_time.h',           'stm_',      [] ],
     [ 'sokol_audio.h',          'saudio_',   [] ],
     [ 'sokol_fetch.h',          'sfetch_',   [] ],
+    [ 'sokol_imgui.h',           'simgui_',    ['sg_', 'sgl_', 'sapp_'] ],
     [ 'sokol_gl.h',        'sgl_',      ['sg_'] ],
     [ 'sokol_debugtext.h', 'sdtx_',     ['sg_'] ],
     [ 'sokol_shape.h',     'sshape_',   ['sg_'] ],
