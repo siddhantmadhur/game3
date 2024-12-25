@@ -4,3 +4,5 @@ sokol-shdc
 *.shader.odin
 atlas.png
 font.png
+bindgen/*.json
+__pycache__

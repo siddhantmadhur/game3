@@ -7,13 +7,13 @@ import "core:fmt"
 import "core:math"
 import "core:math/linalg"
 import "core:mem"
-import "core:os"
 import "core:time"
 
 import sapp "../sokol-odin/sokol/app"
 import sg "../sokol-odin/sokol/gfx"
 import sglue "../sokol-odin/sokol/glue"
 import slog "../sokol-odin/sokol/log"
+import sfetch "../sokol-odin/sokol/fetch"
 
 import stbi "vendor:stb/image"
 import stbrp "vendor:stb/rect_pack"
@@ -323,11 +323,12 @@ init_fonts :: proc() {
 	bitmap, _ := mem.alloc(font_bitmap_w * font_bitmap_h)
 	font_height := 32 // for some reason this only bakes properly at 15 ? it's a 16px font dou...
 	path := "assets/fonts/PressStart2P-Regular.ttf"
-	ttf_data, err := os.read_entire_file(path)
+	ttf_data, ttf_size, err := read_entire_file(path)
+	defer mem.free(ptr)
 	assert(ttf_data != nil, "failed to read font")
 
 	ret := BakeFontBitmap(
-		raw_data(ttf_data),
+		auto_cast ttf_data,
 		0,
 		auto_cast font_height,
 		auto_cast bitmap,
@@ -495,6 +496,62 @@ Image :: struct {
 images: [128]Image
 image_count: int
 
+import "core:strings"
+
+is_finished := false
+
+ptr: rawptr 
+ptr_l: uint
+	
+err := false
+
+fetch_callback :: proc "c" (response: ^sfetch.Response) {
+	context = runtime.default_context()
+	if response.fetched {
+		ptr = response.data.ptr
+		ptr_l = response.data.size
+		is_finished = true
+	} else if response.dispatched {
+		fmt.printfln("Fetching %s...", response.path)
+	} else if response.failed {
+		fmt.printfln("Error fetching %s: code %d", response.path, response.error_code)
+		err := true
+	} else {
+		fmt.printfln("Something else with %s...", response.path)
+
+	}
+}
+read_entire_file :: proc (path: string) -> (rawptr, uint, bool) {
+
+	fmt.printfln("Reading %s...", path)
+
+	bffr_size: uint = size_of(u64) * 8192 * 8192
+	bffr, alloc_err:= mem.alloc(auto_cast bffr_size)
+	if alloc_err != .None {
+		fmt.printfln("Allocate error")
+		return nil, 0, true
+	} else {
+		fmt.printfln("Allocated bytes: %d", bffr_size)
+	}
+
+
+	is_finished = false
+	err = false
+	sfetch.send(sfetch.Request{
+		path = strings.clone_to_cstring(path),
+		buffer = {ptr = bffr, size=bffr_size},
+		callback=fetch_callback
+	})
+
+	for ;!is_finished; {
+		sfetch.dowork()
+	}
+
+
+	return ptr, ptr_l, err
+}
+
+
 init_images :: proc() {
 	using fmt
 
@@ -508,14 +565,15 @@ init_images :: proc() {
 		}
 
 		path := tprint(img_dir, img_name, ".png", sep = "")
-		png_data, succ := os.read_entire_file(path)
-		assert(succ, fmt.tprintf("Could not read png file: %s\n", img_name))
+		png_data, png_size, succ := read_entire_file(path)
+		assert(!succ, fmt.tprintf("Could not read png file: %s\n", img_name))
+		defer mem.free(ptr)
 
 		stbi.set_flip_vertically_on_load(1)
 		width, height, channels: i32
 		img_data := stbi.load_from_memory(
-			raw_data(png_data),
-			auto_cast len(png_data),
+			auto_cast png_data,
+			auto_cast png_size,
 			&width,
 			&height,
 			&channels,
@@ -651,6 +709,19 @@ init :: proc "c" () {
 		fmt.println(">> using dummy backend")
 	}
 
+	sfetch.setup(sfetch.Desc{
+		max_requests = 64,
+		num_channels = 1,
+		num_lanes = 4,
+		logger = { func = slog.func }
+	})
+
+	if !sfetch.valid() {
+		fmt.printfln("Sfetch not valid")
+	} else {
+		fmt.printfln("Sfetch initialized")
+
+	}
 
 	init_images()
 	init_fonts()
@@ -762,6 +833,7 @@ frame :: proc "c" () {
 cleanup :: proc "c" () {
 	context = runtime.default_context()
 	sg.shutdown()
+	sfetch.shutdown()
 }
 
 InputStateFlags :: enum {
