@@ -14,6 +14,7 @@ import sfetch "../sokol-odin/sokol/fetch"
 import sg "../sokol-odin/sokol/gfx"
 import sglue "../sokol-odin/sokol/glue"
 import slog "../sokol-odin/sokol/log"
+import sgl "../sokol-odin/sokol/gl"
 
 import imgui "../odin-imgui"
 //import ogl3 "../odin-imgui/imgui_impl_opengl3"
@@ -29,6 +30,7 @@ Settings :: struct {
 	title:       cstring,
 	paused:      bool,
 	input_state: InputState,
+	is_imgui_hovered: bool,
 }
 
 global: Settings = {
@@ -37,6 +39,7 @@ global: Settings = {
 	title       = "game3",
 	paused      = false,
 	input_state = {},
+	is_imgui_hovered = false,
 }
 
 GameEvents :: struct {
@@ -331,7 +334,7 @@ init_fonts :: proc() {
 	defer mem.free(ttf_data)
 	assert(ttf_data != nil, "failed to read font")
 	io := imgui.GetIO() 
-	imgui.FontAtlas_AddFontDefault(io.Fonts, )
+	imgui.FontAtlas_AddFontDefault(io.Fonts,nil)
 	ret := BakeFontBitmap(
 		auto_cast ttf_data,
 		0,
@@ -722,9 +725,22 @@ init :: proc "c" () {
 	context = runtime.default_context()
 
 
-	sg.setup({environment = sglue.environment(), logger = {func = slog.func}})
+	sg.setup(sg.Desc{
+		environment = sglue.environment(), 
+		logger = {func = slog.func}, 
+	})
 
-	simgui.setup(simgui.Desc{logger = {func = slog.func}, no_default_font = true})
+
+	imgui_ctx := imgui.CreateContext(nil)
+	imgui.SetCurrentContext(imgui_ctx)
+
+	simgui.setup(simgui.Desc{
+		logger = {func = slog.func}, 
+		no_default_font = false,
+		color_format = .RGBA8,
+		depth_format = .DEPTH_STENCIL,
+		sample_count = 1,
+	})
 
 
 	sfetch.setup(
@@ -769,7 +785,7 @@ init :: proc "c" () {
 
 	state.bind.samplers[SMP_default_sampler] = sg.make_sampler({})
 
-	pipeline_desc: sg.Pipeline_Desc = {
+	pipeline_desc := sg.Pipeline_Desc{
 		shader = sg.make_shader(quad_shader_desc(sg.query_backend())),
 		index_type = .UINT16,
 		layout = {
@@ -780,6 +796,12 @@ init :: proc "c" () {
 				ATTR_quad_bytes0 = {format = .UBYTE4N},
 			},
 		},
+		depth = {
+			compare = .LESS_EQUAL,
+			write_enabled = true,
+			pixel_format = .DEPTH_STENCIL,
+		},
+
 	}
 	//pipeline_desc.depth.pixel_format = .RGBA16F
 	blend_state := sg.Blend_State {
@@ -791,22 +813,15 @@ init :: proc "c" () {
 		dst_factor_alpha = .ONE_MINUS_SRC_ALPHA,
 		op_alpha         = .ADD,
 	}
-	pipeline_desc.colors[0] = {
+	pipeline_desc.colors[0] = sg.Color_Target_State{
+		pixel_format = .RGBA8,
 		blend = blend_state,
-		//pixel_format = .RGBA8,
 	}
-	/**
-	pipeline_desc.depth = {
-		write_enabled = true,
-		pixel_format  = .RGBA8,
-		compare = sg.Compare_Func.LESS_EQUAL
-	}
-		**/
 
 	state.pip = sg.make_pipeline(pipeline_desc)
 
 
-	state.pass_action = {
+	state.pass_action = sg.Pass_Action{
 		colors = {0 = {load_action = .CLEAR, clear_value = vec_to_col(hex_to_rgba(bg_color))}},
 	}
 
@@ -821,12 +836,14 @@ radius: f32 = 150
 
 reset_render :: proc() {
 	draw_frame.quad_count = 0
+	global.is_imgui_hovered = false
 }
 
 delta_t :: sapp.frame_duration
 
 frame :: proc "c" () {
 	context = runtime.default_context()
+
 
 	// Delta time stuff
 	elapsed_t += delta_t()
@@ -842,12 +859,22 @@ frame :: proc "c" () {
 		},
 	)
 
+	show := true
+	window_flags: imgui.WindowFlags 
+	window_flags += {.NoMove, .NoResize}
+	imgui.Begin("Hello, World", flags=window_flags)
+	global.is_imgui_hovered = imgui.IsWindowHovered() || global.is_imgui_hovered
+
+
+	imgui.SetWindowSize(v2{300, 400})
+	imgui.SetWindowPos(v2{0, f32(global.window_h) - imgui.GetWindowSize().y})
+
+
+	imgui.End()
+
 	game_render()
 
-	show := true
 	//imgui.ShowDemoWindow(&show)
-
-
 
 
 	state.bind.images[IMG_tex0] = atlas.sg_image
@@ -865,6 +892,7 @@ frame :: proc "c" () {
 	sg.apply_pipeline(state.pip)
 	sg.apply_bindings(state.bind)
 	sg.draw(0, 6 * draw_frame.quad_count, 1)
+
 	simgui.render()
 
 	sg.end_pass()
@@ -878,8 +906,9 @@ frame :: proc "c" () {
 
 cleanup :: proc "c" () {
 	context = runtime.default_context()
-	sg.shutdown()
 	sfetch.shutdown()
+	simgui.shutdown()
+	sg.shutdown()
 }
 
 InputStateFlags :: enum {
@@ -910,6 +939,8 @@ map_sokol_mouse_button :: proc "c" (sokol_mouse_button: sapp.Mousebutton) -> sap
 
 handle_events :: proc "c" (event: ^sapp.Event) {
 	inp_state := &global.input_state
+
+	simgui.handle_event(event^)
 
 	#partial switch event.type {
 	case .MOUSE_MOVE:

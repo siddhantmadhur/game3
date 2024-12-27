@@ -9,6 +9,7 @@ import "core:math"
 import "core:math/linalg"
 
 import sapp "../sokol-odin/sokol/app"
+import imgui "../odin-imgui"
 
 
 tower_defense_bg_color :: 0xcebdb0ff
@@ -321,7 +322,7 @@ tower_game_render :: proc "c" () {
 
 		grid := coord_to_grid(game.mouse_pos)
 
-		if grid.x >= 0 && grid.x < GRID_W && grid.y >= 0 && grid.y < GRID_H {
+		if !global.is_imgui_hovered && grid.x >= 0 && grid.x < GRID_W && grid.y >= 0 && grid.y < GRID_H {
 			draw_rect(grid_to_coord(grid), GRID_TILE, COLOR_RED, img_id = Image_Id.tile)
 		}
 
