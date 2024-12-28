@@ -9,7 +9,7 @@ import "core:math"
 import "core:math/linalg"
 
 import sapp "../sokol-odin/sokol/app"
-import imgui "../odin-imgui"
+import imgui "../imgui-odin"
 
 
 tower_defense_bg_color :: 0xcebdb0ff
@@ -184,6 +184,7 @@ find_next :: proc(
 
 }
 
+
 // Runs every frame
 tower_game_render :: proc "c" () {
 	context = runtime.default_context()
@@ -191,6 +192,8 @@ tower_game_render :: proc "c" () {
 
 	tower_game_event()
 	current_event = .none
+
+	imgui.ShowDemoWindow()
 
 	// SET PROJECTION AND/OR CAMERA ZOOM
 	draw_frame.projection = linalg.matrix_ortho3d_f32(
@@ -368,51 +371,40 @@ tower_game_render :: proc "c" () {
 
 	// Render debug stats
 	if game.debug {
-		debug_scale: f64 = 0.75 / f64(game.camera_zoom)
-		//debug_color := hex_to_rgba(color_text)
-		debug_color := COLOR_RED
-		tl := v2{0, auto_cast global.window_h}
-		tl = screen_to_world(tl)
-		tl += v2{10, -10} / game.camera_zoom
-		size := draw_text(
-			tl,
-			fmt.tprintf("FPS: %.0f", game.fps.value),
-			pivot = .top_left,
-			color = debug_color,
-			scale_d = debug_scale,
+
+		debug_flags: bit_set[imgui.WindowFlag;i32]
+		debug_flags += {
+			.NoMove,
+			.Modal,
+			.NoResize,
+			.NoCollapse,
+			.AlwaysAutoResize,
+			.NoTitleBar,
+			.NoNavFocus,
+			.NoMouseInputs,
+			.NoFocusOnAppearing,
+		}
+
+		imgui.SetNextWindowBgAlpha(0.5)
+		imgui.Begin("Debug Stats", nil, debug_flags)
+		defer imgui.End()
+
+		size := imgui.GetWindowSize()
+		imgui.SetWindowPos(v2{5, 5})
+
+		imgui.Text("FPS: %.0f", game.fps.value)
+		imgui.Text("Quads drawn: %d", draw_frame.quad_count)
+		imgui.Text("Time elapsed: %.0fs", elapsed_t)
+		imgui.Text(
+			"Mouse (Screen): [%.0f, %.0f]",
+			game.mouse_pos_screen.x,
+			game.mouse_pos_screen.y,
 		)
-		tl.y -= size.y
-		size = draw_text(
-			tl,
-			fmt.tprintf("Time Elapsed: %.0fs", elapsed_t),
-			pivot = .top_left,
-			color = debug_color,
-			scale_d = debug_scale,
-		)
-		tl.y -= size.y
-		size = draw_text(
-			tl,
-			fmt.tprintf("Entities: %d", game.enemies_n),
-			pivot = .top_left,
-			color = debug_color,
-			scale_d = debug_scale,
-		)
-		tl.y -= size.y
-		size = draw_text(
-			tl,
-			fmt.tprintf("Mouse [Screen]: %f", game.mouse_pos_screen),
-			pivot = .top_left,
-			color = debug_color,
-			scale_d = debug_scale,
-		)
-		tl.y -= size.y
-		size = draw_text(
-			tl,
-			fmt.tprintf("Mouse [World]: %f", game.mouse_pos),
-			pivot = .top_left,
-			color = debug_color,
-			scale_d = debug_scale,
-		)
+		imgui.Text("Mouse (World): [%.3f, %.3f]", game.mouse_pos.x, game.mouse_pos.y)
+		io := imgui.GetIO()
+		mouse := io.MousePos
+		imgui.Text("Mouse (imgui): [%.0f, %.0f]", mouse.x, mouse.y)
+
 	}
 
 

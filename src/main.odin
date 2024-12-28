@@ -16,9 +16,8 @@ import sglue "../sokol-odin/sokol/glue"
 import slog "../sokol-odin/sokol/log"
 import sgl "../sokol-odin/sokol/gl"
 
-import imgui "../odin-imgui"
-//import ogl3 "../odin-imgui/imgui_impl_opengl3"
-import simgui "../sokol-odin/sokol/imgui"
+import imgui "../imgui-odin"
+import opengl "../imgui-odin/imgui_impl_opengl3"
 
 import stbi "vendor:stb/image"
 import stbrp "vendor:stb/rect_pack"
@@ -730,18 +729,15 @@ init :: proc "c" () {
 		logger = {func = slog.func}, 
 	})
 
+	imgui_ctx := imgui.CreateContext()
 
-	imgui_ctx := imgui.CreateContext(nil)
-	imgui.SetCurrentContext(imgui_ctx)
+	io := imgui.GetIO()
 
-	simgui.setup(simgui.Desc{
-		logger = {func = slog.func}, 
-		no_default_font = false,
-		color_format = .RGBA8,
-		depth_format = .DEPTH_STENCIL,
-		sample_count = 1,
-	})
+	io.ConfigFlags += { .NavEnableKeyboard, .DockingEnable }
 
+	opengl.Init("#version 430")
+
+	io.DisplaySize = v2{f32(global.window_w), f32(global.window_h)}
 
 	sfetch.setup(
 		sfetch.Desc {
@@ -825,6 +821,9 @@ init :: proc "c" () {
 		colors = {0 = {load_action = .CLEAR, clear_value = vec_to_col(hex_to_rgba(bg_color))}},
 	}
 
+	state.bind.images[IMG_tex0] = atlas.sg_image
+	state.bind.images[IMG_tex1] = images[font.img_id].sg_img 
+
 
 }
 
@@ -836,7 +835,6 @@ radius: f32 = 150
 
 reset_render :: proc() {
 	draw_frame.quad_count = 0
-	global.is_imgui_hovered = false
 }
 
 delta_t :: sapp.frame_duration
@@ -849,43 +847,19 @@ frame :: proc "c" () {
 	elapsed_t += delta_t()
 	last_time = time.now()
 
-
-	simgui.new_frame(
-		simgui.Frame_Desc {
-			width = (global.window_w),
-			height = (global.window_h),
-			dpi_scale = sapp.dpi_scale(),
-			delta_time = sapp.frame_duration(),
-		},
-	)
-
-	show := true
-	window_flags: imgui.WindowFlags 
-	window_flags += {.NoMove, .NoResize}
-	imgui.Begin("Hello, World", flags=window_flags)
-	global.is_imgui_hovered = imgui.IsWindowHovered() || global.is_imgui_hovered
-
-
-	imgui.SetWindowSize(v2{300, 400})
-	imgui.SetWindowPos(v2{0, f32(global.window_h) - imgui.GetWindowSize().y})
-
-
-	imgui.End()
+	opengl.NewFrame()
+	imgui.NewFrame()
 
 	game_render()
 
 	//imgui.ShowDemoWindow(&show)
 
 
-	state.bind.images[IMG_tex0] = atlas.sg_image
-	state.bind.images[IMG_tex1] = images[font.img_id].sg_img
-
-
 	sg.update_buffer(
 		state.bind.vertex_buffers[0],
 		{ptr = &draw_frame.quads[0], size = size_of(Quad) * len(draw_frame.quads)},
 	)
-	//ogl3.RenderDrawData()
+	
 	sg.begin_pass({action = state.pass_action, swapchain = sglue.swapchain()})
 
 
@@ -893,7 +867,8 @@ frame :: proc "c" () {
 	sg.apply_bindings(state.bind)
 	sg.draw(0, 6 * draw_frame.quad_count, 1)
 
-	simgui.render()
+	imgui.Render()
+	opengl.RenderDrawData(imgui.GetDrawData())
 
 	sg.end_pass()
 	sg.commit()
@@ -907,8 +882,9 @@ frame :: proc "c" () {
 cleanup :: proc "c" () {
 	context = runtime.default_context()
 	sfetch.shutdown()
-	simgui.shutdown()
 	sg.shutdown()
+	opengl.Shutdown()
+	imgui.DestroyContext(imgui.GetCurrentContext())
 }
 
 InputStateFlags :: enum {
@@ -937,10 +913,135 @@ map_sokol_mouse_button :: proc "c" (sokol_mouse_button: sapp.Mousebutton) -> sap
 	return nil
 }
 
+sokol_update_modifier :: proc (io: ^imgui.IO, mod: u32) {
+	imgui.IO_AddKeyEvent(io, .ImGuiMod_Ctrl, (mod & sapp.MODIFIER_CTRL) != 0)
+	imgui.IO_AddKeyEvent(io, .ImGuiMod_Shift, (mod & sapp.MODIFIER_SHIFT) != 0)
+	imgui.IO_AddKeyEvent(io, .ImGuiMod_Alt, (mod & sapp.MODIFIER_ALT) != 0)
+	imgui.IO_AddKeyEvent(io, .ImGuiMod_Super, (mod & sapp.MODIFIER_SUPER) != 0)
+}
+
+sokol_add_mouse_pos_event :: proc (io: ^imgui.IO, x: f32, y: f32)  {
+	imgui.IO_AddMouseSourceEvent(io, imgui.MouseSource.Mouse)
+	imgui.IO_AddMousePosEvent(io, x, y)
+}
+
+
+sokol_to_imgui :: proc "c" (ev: ^sapp.Event) -> bool {
+	context = runtime.default_context()
+	io := imgui.GetIO()
+	dpi_scale := imgui.GetWindowDpiScale()
+
+	#partial switch ev.type {
+		case .FOCUSED:
+			imgui.IO_AddFocusEvent(io, true)
+		case .UNFOCUSED:
+			imgui.IO_AddFocusEvent(io, false)	
+        case .MOUSE_DOWN:
+			x := ev.mouse_x / dpi_scale	
+			y := ev.mouse_y / dpi_scale	
+			imgui.IO_AddMouseSourceEvent(io, imgui.MouseSource.Mouse)
+			imgui.IO_AddMouseButtonEvent(io, cast(i32) ev.mouse_button, true)
+			imgui.IO_AddMousePosEvent(io, x, y)
+
+			sokol_update_modifier(io, ev.modifiers)
+
+        case .MOUSE_UP:
+			x := ev.mouse_x / dpi_scale	
+			y := ev.mouse_y / dpi_scale	
+			imgui.IO_AddMouseSourceEvent(io, imgui.MouseSource.Mouse)
+
+			imgui.IO_AddMouseSourceEvent(io, imgui.MouseSource.Mouse)
+			imgui.IO_AddMouseButtonEvent(io, cast(i32) ev.mouse_button, false)
+			sokol_update_modifier(io, ev.modifiers)
+
+        case .MOUSE_MOVE:
+			x := ev.mouse_x / dpi_scale
+			y := ev.mouse_y / dpi_scale
+			imgui.IO_AddMouseSourceEvent(io, imgui.MouseSource.Mouse)
+			imgui.IO_AddMousePosEvent(io, x, y)
+			global.is_imgui_hovered = io.WantCaptureMouse
+        case .MOUSE_SCROLL:
+			x := ev.scroll_x
+			y := ev.scroll_y
+			imgui.IO_AddMouseSourceEvent(io, imgui.MouseSource.Mouse)	
+			imgui.IO_AddMouseWheelEvent(io, x, y)
+            break;
+		case .RESIZED:
+			global.window_h = ev.window_height
+			global.window_w = ev.window_width
+			io.DisplaySize = v2{f32(ev.window_width), f32(ev.window_height)}
+			/**
+        case SAPP_EVENTTYPE_KEY_DOWN:
+            _simgui_update_modifiers(io, ev->modifiers);
+            // intercept Ctrl-V, this is handled via EVENTTYPE_CLIPBOARD_PASTED
+            if (!_simgui.desc.disable_paste_override) {
+                if (_simgui_is_ctrl(ev->modifiers) && (ev->key_code == SAPP_KEYCODE_V)) {
+                    break;
+                }
+            }
+            // on web platform, don't forward Ctrl-X, Ctrl-V to the browser
+            if (_simgui_is_ctrl(ev->modifiers) && (ev->key_code == SAPP_KEYCODE_X)) {
+                sapp_consume_event();
+            }
+            if (_simgui_is_ctrl(ev->modifiers) && (ev->key_code == SAPP_KEYCODE_C)) {
+                sapp_consume_event();
+            }
+            // it's ok to add ImGuiKey_None key events
+            _simgui_add_sapp_key_event(io, ev->key_code, true);
+            break;
+        case SAPP_EVENTTYPE_KEY_UP:
+            _simgui_update_modifiers(io, ev->modifiers);
+            // intercept Ctrl-V, this is handled via EVENTTYPE_CLIPBOARD_PASTED
+            if (_simgui_is_ctrl(ev->modifiers) && (ev->key_code == SAPP_KEYCODE_V)) {
+                break;
+            }
+            // on web platform, don't forward Ctrl-X, Ctrl-V to the browser
+            if (_simgui_is_ctrl(ev->modifiers) && (ev->key_code == SAPP_KEYCODE_X)) {
+                sapp_consume_event();
+            }
+            if (_simgui_is_ctrl(ev->modifiers) && (ev->key_code == SAPP_KEYCODE_C)) {
+                sapp_consume_event();
+            }
+            // it's ok to add ImGuiKey_None key events
+            _simgui_add_sapp_key_event(io, ev->key_code, false);
+            break;
+        case SAPP_EVENTTYPE_CHAR:
+            /* on some platforms, special keys may be reported as
+               characters, which may confuse some ImGui widgets,
+               drop those, also don't forward characters if some
+               modifiers have been pressed
+            */
+            _simgui_update_modifiers(io, ev->modifiers);
+            if ((ev->char_code >= 32) &&
+                (ev->char_code != 127) &&
+                (0 == (ev->modifiers & (SAPP_MODIFIER_ALT|SAPP_MODIFIER_CTRL|SAPP_MODIFIER_SUPER))))
+            {
+                simgui_add_input_character(ev->char_code);
+            }
+            break;
+        case SAPP_EVENTTYPE_CLIPBOARD_PASTED:
+            // simulate a Ctrl-V key down/up
+            if (!_simgui.desc.disable_paste_override) {
+                _simgui_add_imgui_key_event(io, _simgui_copypaste_modifier(), true);
+                _simgui_add_imgui_key_event(io, ImGuiKey_V, true);
+                _simgui_add_imgui_key_event(io, ImGuiKey_V, false);
+                _simgui_add_imgui_key_event(io, _simgui_copypaste_modifier(), false);
+            }
+            break;
+
+		**/
+
+	}
+
+	return io.WantCaptureMouse 
+
+}
+
 handle_events :: proc "c" (event: ^sapp.Event) {
 	inp_state := &global.input_state
 
-	simgui.handle_event(event^)
+	//simgui.handle_event(event^)
+	sokol_to_imgui(event)
 
 	#partial switch event.type {
 	case .MOUSE_MOVE:
