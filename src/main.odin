@@ -735,7 +735,13 @@ init :: proc "c" () {
 
 	io.ConfigFlags += { .NavEnableKeyboard, .DockingEnable }
 
-	opengl.Init("#version 430")
+	backend := sg.query_backend()
+	#partial switch backend {
+		case .GLCORE:
+			opengl.Init("#version 430")
+		case :
+			fmt.panicf("[IMGUI]: BACKEND NOT SUPPORTED\n")
+	}
 
 	io.DisplaySize = v2{f32(global.window_w), f32(global.window_h)}
 
