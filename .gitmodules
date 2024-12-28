@@ -1,3 +1,6 @@
 [submodule "sokol-odin"]
 	path = sokol-odin
 	url = https://github.com/siddhantmadhur/sokol-odin.git
+[submodule "imgui-odin"]
+	path = imgui-odin
+	url = https://gitlab.com/L-4/odin-imgui
